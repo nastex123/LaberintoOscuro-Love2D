@@ -12,6 +12,7 @@ Vault.spawnRates = {
     random    = { min=3, max=5 },
 }
 
+Vault.randomTierOrder = { "common", "epic", "legendary" }
 Vault.randomTierChances = {
     common    = 0.55,
     epic      = 0.30,
@@ -130,8 +131,8 @@ end
 function Vault:resolveTier()
     local r = love.math.random()
     local cumulative = 0
-    for tier, chance in pairs(self.randomTierChances) do
-        cumulative = cumulative + chance
+    for _, tier in ipairs(self.randomTierOrder) do
+        cumulative = cumulative + (self.randomTierChances[tier] or 0)
         if r <= cumulative then return tier end
     end
     return "common"

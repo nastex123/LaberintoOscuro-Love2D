@@ -40,6 +40,7 @@ function ChestAnim:start(tier)
     self.speed = 3000
     self.state = "spinning"
     self.lastItemId = nil
+    self.tierName = ({ common="Común", epic="Épico", legendary="Legendario", random="Aleatorio" })[tier] or tier
 
     local sw, sh = love.graphics.getDimensions()
     self.centerX = sw / 2
@@ -86,7 +87,10 @@ function ChestAnim:draw()
 
     love.graphics.setColor(1, 1, 1)
     love.graphics.setFont(love.graphics.newFont(24))
-    local title = (self.state == "result" or self.state == "done") and "¡Has encontrado!" or "Abriendo cofre..."
+    local tierName = self.tierName or ""
+    local title = (self.state == "result" or self.state == "done")
+        and ("¡Has encontrado!  [" .. tierName .. "]")
+        or "Abriendo cofre..."
     love.graphics.printf(title, 0, self.centerY - 130, sw, "center")
 
     local trackY = self.centerY - 40

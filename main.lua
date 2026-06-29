@@ -776,7 +776,7 @@ function love.draw()
             local def = Items.defs[id]
             if def then
                 local txt = def.nombre
-                if data and data.uses then
+                if type(data) == "table" and data.uses then
                     txt = txt .. " ["..data.uses.."/"..def.maxUses.."]"
                 end
                 love.graphics.setColor(def.color)
