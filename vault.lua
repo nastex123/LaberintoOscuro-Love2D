@@ -45,7 +45,7 @@ function Vault:placeAll(maze)
         for x = 0, maze.cols - 1 do
             local v = maze.grid[y][x]
             if v >= 4 and v <= 7 then
-                local tier = ({ 4="common", 5="epic", 6="legendary", 7="random" })[v] or "common"
+                local tier = ({ [4]="common", [5]="epic", [6]="legendary", [7]="random" })[v] or "common"
                 if not Vault.data[y] then Vault.data[y] = {} end
                 Vault.data[y][x] = { tier = tier, opened = false, tx = x, ty = y }
             end
