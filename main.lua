@@ -28,6 +28,94 @@ local function addLight(x, y, radius, color, falloff)
     lights[#lights+1] = {x=x, y=y, radius=radius, color=color, falloff=falloff or 2}
 end
 
+local currentTemplates = {}
+
+local editor = {
+    active = false, currentIdx = 1, grid = {},
+    cursorX = 1, cursorY = 1, brush = 0,
+    width = 10, height = 10, name = "Nueva sala",
+}
+local brushChars = {[0]='.', [1]='#', [2]='X', [3]='L', [4]='R'}
+local brushNames = {[0]="Suelo", [1]="Pared", [2]="Salida", [3]="Luz", [4]="Relicario"}
+
+local function setGridChar(grid, x, y, ch)
+    local row = grid[y]
+    if not row or x < 1 or x > #row then return end
+    grid[y] = row:sub(1, x-1) .. ch .. row:sub(x+1)
+end
+
+local function initEditor()
+    if #currentTemplates > 0 then
+        editor.currentIdx = math.min(editor.currentIdx, #currentTemplates)
+        editor.currentIdx = math.max(editor.currentIdx, 1)
+        local tmpl = currentTemplates[editor.currentIdx]
+        editor.grid = {}
+        for _, row in ipairs(tmpl.grid) do
+            table.insert(editor.grid, row)
+        end
+        if #editor.grid > 0 and #editor.grid[1] > 0 then
+            editor.width = #editor.grid[1]
+            editor.height = #editor.grid
+        else
+            editor.grid = {}
+            for y = 1, 10 do
+                editor.grid[y] = string.rep(".", 10)
+            end
+            editor.width = 10
+            editor.height = 10
+        end
+        editor.name = tmpl.name
+    else
+        editor.grid = {}
+        for y = 1, 10 do
+            editor.grid[y] = string.rep(".", 10)
+        end
+        editor.width = 10
+        editor.height = 10
+        editor.name = "Nueva sala"
+    end
+    editor.cursorX = 1
+    editor.cursorY = 1
+end
+
+local function saveEditorData()
+    local tmpl = currentTemplates[editor.currentIdx]
+    if tmpl then
+        tmpl.grid = {}
+        for _, row in ipairs(editor.grid) do
+            table.insert(tmpl.grid, row)
+        end
+        tmpl.name = editor.name
+    end
+    local lines = {
+        "-- room_templates.lua – Plantillas de salas personalizadas",
+        "-- Editado desde el editor in-game (F2)",
+        "",
+        "local templates = {",
+    }
+    for _, t in ipairs(currentTemplates) do
+        lines[#lines+1] = "    {"
+        lines[#lines+1] = "        name = " .. string.format("%q", t.name) .. ","
+        lines[#lines+1] = "        grid = {"
+        for _, row in ipairs(t.grid) do
+            lines[#lines+1] = "            " .. string.format("%q", row) .. ","
+        end
+        lines[#lines+1] = "        },"
+        lines[#lines+1] = "    },"
+    end
+    lines[#lines+1] = "}"
+    lines[#lines+1] = "return templates"
+    local content = table.concat(lines, "\n")
+    local f, err = io.open("room_templates.lua", "w")
+    if f then
+        f:write(content)
+        f:close()
+        print("Templates guardados (room_templates.lua)")
+    else
+        print("Error al guardar:", err)
+    end
+end
+
 local function loadShaders()
     -- Cargamos únicamente el shader de caída cuadrática (falloff)
     local ok, shader = pcall(love.graphics.newShader, "shaders/light_falloff.glsl")
@@ -53,11 +141,20 @@ function love.load()
     local json = require "json"
     local configPath = "maze_config.json"
     local configData = love.filesystem.read(configPath) or ""
-    local config = {}
-    if configData ~= "" then
-        local ok, parsed = pcall(json.decode, configData)
-        if ok then config = parsed end
+    local config = {
+        cols = 145, rows = 145, tile = 75,
+        roomCount = {16, 20}, branchCount = {6, 12},
+        branchLen = {30, 30}, loopChance = 0.8,
+        perlinThresh = 0.25, seed = nil,
+    }
+if configData ~= "" then
+    local ok, parsed = pcall(json.decode, configData)
+    if ok then
+        for k, v in pairs(parsed) do config[k] = v end
+    else
+        print("Error al leer maze_config.json:", parsed)
     end
+end
     --=== 2. Sobrescribir con argumentos de línea de comandos ===
     local function applyArg(key, value)
         if key == "cols" or key == "rows" or key == "tile" then
@@ -140,6 +237,9 @@ function love.load()
     initCanvases()
     loadShaders()
 
+    -- Cargar plantillas de salas personalizadas
+    currentTemplates = require "room_templates"
+
     --=== 5. UI de depuración en tiempo real ===
     ui = {
         active = false,
@@ -179,6 +279,94 @@ end
 
 -- No shader switching: solo se usa el shader Falloff
 function love.keypressed(key)
+    -- Editor toggle
+    if key == "f2" then
+        editor.active = not editor.active
+        if editor.active then initEditor() end
+        return
+    end
+    -- Editor keys
+    if editor.active then
+        if key == "escape" then
+            editor.active = false
+        elseif key == "up" then
+            editor.cursorY = math.max(1, editor.cursorY - 1)
+        elseif key == "down" then
+            editor.cursorY = math.min(#editor.grid, editor.cursorY + 1)
+        elseif key == "left" then
+            editor.cursorX = math.max(1, editor.cursorX - 1)
+        elseif key == "right" then
+            editor.cursorX = math.min(#editor.grid[1], editor.cursorX + 1)
+        elseif key == "space" then
+            local ch = brushChars[editor.brush] or '.'
+            setGridChar(editor.grid, editor.cursorX, editor.cursorY, ch)
+            if editor.cursorX < #editor.grid[1] then
+                editor.cursorX = editor.cursorX + 1
+            elseif editor.cursorY < #editor.grid then
+                editor.cursorX = 1
+                editor.cursorY = editor.cursorY + 1
+            end
+        elseif key == "1" then editor.brush = 0
+        elseif key == "2" then editor.brush = 1
+        elseif key == "3" then editor.brush = 3
+        elseif key == "4" then editor.brush = 2
+        elseif key == "5" then editor.brush = 4
+        elseif key == "s" then
+            saveEditorData()
+            package.loaded["room_templates"] = nil
+            currentTemplates = require "room_templates"
+        elseif key == "tab" then
+            local tmpl = currentTemplates[editor.currentIdx]
+            if tmpl then
+                tmpl.grid = {}
+                for _, row in ipairs(editor.grid) do
+                    table.insert(tmpl.grid, row)
+                end
+            end
+            if #currentTemplates > 0 then
+                editor.currentIdx = editor.currentIdx % #currentTemplates + 1
+            end
+            initEditor()
+        elseif key == "n" then
+            table.insert(currentTemplates, {name = "Nueva sala", grid = {}})
+            editor.currentIdx = #currentTemplates
+            initEditor()
+            editor.grid = {}
+            for y = 1, 10 do
+                editor.grid[y] = string.rep(".", 10)
+            end
+            editor.width = 10
+            editor.height = 10
+            editor.name = "Nueva sala"
+        elseif key == "r" then
+            if love.keyboard.isDown("lshift", "rshift") then
+                if editor.height > 3 then
+                    table.remove(editor.grid)
+                    editor.height = editor.height - 1
+                    editor.cursorY = math.min(editor.cursorY, editor.height)
+                end
+            elseif editor.height < 30 then
+                table.insert(editor.grid, string.rep(".", editor.width))
+                editor.height = editor.height + 1
+            end
+        elseif key == "c" then
+            if love.keyboard.isDown("lshift", "rshift") then
+                if editor.width > 3 then
+                    for y = 1, #editor.grid do
+                        editor.grid[y] = editor.grid[y]:sub(1, -2)
+                    end
+                    editor.width = editor.width - 1
+                    editor.cursorX = math.min(editor.cursorX, editor.width)
+                end
+            elseif editor.width < 30 then
+                for y = 1, #editor.grid do
+                    editor.grid[y] = editor.grid[y] .. "."
+                end
+                editor.width = editor.width + 1
+            end
+        end
+        return
+    end
     -- UI toggle
     if key == "f1" then
         ui.active = not ui.active
@@ -261,8 +449,52 @@ elseif key == "left" then
     end
 end
 
+-- === Mouse support for the F2 editor ===
+local function editorCellFromMouse(mx, my)
+    local sw, sh = love.graphics.getDimensions()
+    local ET = 32
+    local gridW = editor.width * ET
+    local gridH = editor.height * ET
+    local gx = math.floor((mx - math.max(10, (sw - gridW) / 2)) / ET) + 1
+    local gy = math.floor((my - math.max(10, (sh - gridH) / 2)) / ET) + 1
+    if gx < 1 or gx > editor.width or gy < 1 or gy > editor.height then return end
+    return gx, gy
+end
+
+local function editorPaintCell(gx, gy, brush)
+    editor.cursorX, editor.cursorY = gx, gy
+    setGridChar(editor.grid, gx, gy, brushChars[brush] or '.')
+end
+
+function love.mousepressed(mx, my, button)
+    if editor.active then
+        local gx, gy = editorCellFromMouse(mx, my)
+        if gx then
+            if button == 1 then
+                editorPaintCell(gx, gy, editor.brush)
+            elseif button == 2 then
+                editorPaintCell(gx, gy, 0)
+            end
+        end
+        return
+    end
+end
+
+function love.mousemoved(mx, my)
+    if editor.active then
+        if love.mouse.isDown(1) or love.mouse.isDown(2) then
+            local gx, gy = editorCellFromMouse(mx, my)
+            if gx then
+                editorPaintCell(gx, gy, love.mouse.isDown(1) and editor.brush or 0)
+            end
+        end
+        return
+    end
+end
+
 local crikerSpawnTimer = 0
 function love.update(dt)
+    if editor.active then return end
     if state ~= "play" then return end
     time = time + dt
     if not criker.active then
@@ -381,6 +613,73 @@ local function drawFlashlight()
     love.graphics.setBlendMode("alpha")
 end
 
+local function drawEditor()
+    local sw, sh = love.graphics.getDimensions()
+    local EDITOR_TILE = 32
+    local gridW = editor.width * EDITOR_TILE
+    local gridH = editor.height * EDITOR_TILE
+    local gridX = math.max(10, (sw - gridW) / 2)
+    local gridY = math.max(10, (sh - gridH) / 2)
+
+    -- Overlay
+    love.graphics.setColor(0, 0, 0, 0.8)
+    love.graphics.rectangle("fill", 0, 0, sw, sh)
+
+    -- Grid
+    for y = 1, editor.height do
+        for x = 1, editor.width do
+            local ch = editor.grid[y]:sub(x, x)
+            local px = gridX + (x-1) * EDITOR_TILE
+            local py = gridY + (y-1) * EDITOR_TILE
+            local color
+            if ch == '#' then color = {0.176,0.176,0.227}
+            elseif ch == 'X' then color = {1,0.867,0}
+            elseif ch == 'L' then color = {0.267,0.533,0.667}
+            elseif ch == 'R' then color = {0.533,0.4,0.267}
+            else color = {0.039,0.039,0.039}
+            end
+            love.graphics.setColor(color)
+            love.graphics.rectangle("fill", px, py, EDITOR_TILE, EDITOR_TILE)
+            love.graphics.setColor(0.2, 0.2, 0.3, 0.4)
+            love.graphics.rectangle("line", px, py, EDITOR_TILE, EDITOR_TILE)
+        end
+    end
+
+    -- Cursor
+    local cx = gridX + (editor.cursorX-1) * EDITOR_TILE
+    local cy = gridY + (editor.cursorY-1) * EDITOR_TILE
+    love.graphics.setColor(1, 1, 0)
+    love.graphics.rectangle("line", cx-1, cy-1, EDITOR_TILE+2, EDITOR_TILE+2)
+
+    -- Top info
+    love.graphics.setColor(1,1,1)
+    love.graphics.setFont(love.graphics.newFont(16))
+    love.graphics.print(editor.name .. " (" .. editor.width .. "x" .. editor.height .. ")", 20, 20)
+
+    -- Brush indicator
+    love.graphics.print("Brocha: " .. (brushNames[editor.brush] or "?"), sw - 200, 20)
+
+    -- Template navigation
+    love.graphics.setFont(love.graphics.newFont(12))
+    love.graphics.print("Sala " .. editor.currentIdx .. " de " .. #currentTemplates, sw - 200, 40)
+
+    -- Controls help
+    local helpY = sh - 130
+    local help = {
+        "Flechas: mover cursor  Click izq: pintar  Der: borrar",
+        "1=Suelo  2=Pared  3=Luz  4=Salida  5=Reliquia",
+        "R: +fila  Shift+R: -fila",
+        "C: +col  Shift+C: -col",
+        "Tab: siguiente sala  N: nueva  S: guardar  Esc: salir",
+        "Arrastrar con mouse para pintar/borrar",
+    }
+    for _, line in ipairs(help) do
+        love.graphics.setColor(0.8, 0.8, 0.8)
+        love.graphics.print(line, 20, helpY)
+        helpY = helpY + 16
+    end
+end
+
 function love.draw()
     love.graphics.clear(0,0,0)
 
@@ -430,6 +729,8 @@ if ui.active then
     end
     love.graphics.setColor(1,1,1)
 end
+
+    if editor.active then drawEditor() end
 
     if state == "dead" then
         love.graphics.setColor(1,1,1)

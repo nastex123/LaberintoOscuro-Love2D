@@ -1,6 +1,7 @@
 -- maze.lua – Maze generator ported from the original HTML/JS version
 
 local Perlin = require "perlin"
+local roomTemplates = require "room_templates"
 
 local Maze = {}
 Maze.__index = Maze
@@ -68,12 +69,20 @@ function Maze:createRooms()
     local margin = 6
     for i = 0, count - 1 do
         local w, h, type
+        local templateRoom = nil
         if i == 0 then
             type = 'E'
         elseif i == 1 then
             type = ({'F','G','H'})[rand(1,3)]
         else
-            type = ({'A','A','B','B','C','D'})[rand(1,6)]
+            if #roomTemplates > 0 and love.math.random() < 0.4 then
+                templateRoom = roomTemplates[rand(1, #roomTemplates)]
+                w = #templateRoom.grid[1]
+                h = #templateRoom.grid
+                type = 'Z'
+            else
+                type = ({'A','A','B','B','C','D'})[rand(1,6)]
+            end
         end
         if type == 'A' then w, h = rand(5,8), rand(5,8)
         elseif type == 'B' then w, h = rand(6,9), rand(6,9)
@@ -96,7 +105,8 @@ function Maze:createRooms()
                 end
             end
             if not overlap then
-                local room = {x = x, y = y, w = w, h = h, cx = math.floor(x + w / 2), cy = math.floor(y + h / 2), type = type, name = names[type]}
+                local room = {x = x, y = y, w = w, h = h, cx = math.floor(x + w / 2), cy = math.floor(y + h / 2), type = type, name = (templateRoom and templateRoom.name) or names[type]}
+                if templateRoom then room.template = templateRoom end
                 table.insert(self.rooms, room)
                 if type == 'E' then self.safeRoom = room end
                 if type == 'F' or type == 'G' or type == 'H' then self.treasureRoom = room end
@@ -302,7 +312,9 @@ function Maze:carveRooms()
         end
     end
     for _, r in ipairs(self.rooms) do
-        if r.type == 'A' then self:carveEmpty(r)
+        if r.template then
+            self:carveTemplate(r)
+        elseif r.type == 'A' then self:carveEmpty(r)
         elseif r.type == 'B' then self:carvePillars(r)
         elseif r.type == 'C' then self:carveMiniLab(r)
         elseif r.type == 'D' then self:carvePit(r)
@@ -425,6 +437,40 @@ function Maze:carveCondenados(r)
     end
 end
 
+function Maze:carveTemplate(r)
+    local tmpl = r.template
+    if not tmpl then return end
+    local foundL, foundR
+    for ty, row in ipairs(tmpl.grid) do
+        for tx = 1, #row do
+            local ch = row:sub(tx, tx)
+            if ch ~= ' ' then
+                local gx = r.x + tx - 1
+                local gy = r.y + ty - 1
+                if gy > 0 and gx > 0 and gy < self.rows-1 and gx < self.cols-1 then
+                    if ch == '#' or ch == 'P' then
+                        self.grid[gy][gx] = 1
+                    elseif ch == 'L' then
+                        self.grid[gy][gx] = 3
+                        foundL = true
+                    elseif ch == 'X' then
+                        self.grid[gy][gx] = 2
+                        self.exitCell = {x = gx, y = gy}
+                    elseif ch == 'R' then
+                        self.grid[gy][gx] = 4
+                        foundR = true
+                    else
+                        self.grid[gy][gx] = 0
+                    end
+                    self.gridType[gy][gx] = "room"
+                end
+            end
+        end
+    end
+    if foundL then self.safeRoom = r end
+    if foundR then self.treasureRoom = r end
+end
+
 function Maze:degradeEdges()
     local P = Perlin:new(love.math.random())
     for y = 2, self.rows - 3 do
@@ -454,8 +500,8 @@ function Maze:forceBorderRing()
 end
 
 function Maze:setExitCell()
+    if self.exitCell then return end
     if not self.exitRoom then return end
-    -- Ensure exit coordinates are inside the grid bounds
     local ex = math.max(0, math.min(self.exitRoom.cx, self.cols - 1))
     local ey = math.max(0, math.min(self.exitRoom.cy, self.rows - 1))
     self.exitCell = {x = ex, y = ey}
@@ -497,8 +543,8 @@ end
 function Maze:isSafe(px, py)
     local tx = math.floor(px / self.tile)
     local ty = math.floor(py / self.tile)
-    if not self.safeRoom then return false end
-    return tx >= self.safeRoom.x and tx < self.safeRoom.x + self.safeRoom.w and ty >= self.safeRoom.y and ty < self.safeRoom.y + self.safeRoom.h
+    if tx < 0 or ty < 0 or tx >= self.cols or ty >= self.rows then return false end
+    return self.grid[ty][tx] == 3
 end
 
 function Maze:hasLineOfSight(x0, y0, x1, y1)

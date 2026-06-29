@@ -32,10 +32,11 @@ local function decode_error(str, idx, msg) error(string.format('JSON decode erro
 
 function json.decode(str)
     local pos = 1
-    local function skipWhitespace()
+    local skipWhitespace, parseValue, parseObject, parseArray, parseString, parseNumber
+    function skipWhitespace()
         pos = string.find(str, '[^%s]', pos) or #str+1
     end
-    local function parseValue()
+    function parseValue()
         skipWhitespace()
         local char = str:sub(pos,pos)
         if char == '{' then return parseObject() end
@@ -45,9 +46,9 @@ function json.decode(str)
         if str:sub(pos, pos+3) == 'true' then pos = pos+4; return true end
         if str:sub(pos, pos+4) == 'false' then pos = pos+5; return false end
         if str:sub(pos, pos+3) == 'null' then pos = pos+4; return nil end
-        decode_error(str, pos, 'invalid value')
+        decode_error(pos, 'invalid value')
     end
-    local function parseObject()
+    function parseObject()
         pos = pos + 1
         local obj = {}
         skipWhitespace()
@@ -68,7 +69,7 @@ function json.decode(str)
         end
         return obj
     end
-    local function parseArray()
+    function parseArray()
         pos = pos + 1
         local arr = {}
         skipWhitespace()
@@ -83,7 +84,7 @@ function json.decode(str)
         end
         return arr
     end
-    local function parseString()
+    function parseString()
         pos = pos + 1
         local start = pos
         local result = ''
@@ -116,7 +117,7 @@ function json.decode(str)
         pos = pos + 1
         return result
     end
-    local function parseNumber()
+    function parseNumber()
         local start = pos
         local numStr = str:match('[-+%d.eE]+', pos)
         if not numStr then decode_error(str, pos, 'invalid number') end
