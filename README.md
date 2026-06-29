@@ -20,10 +20,12 @@ O en Windows, doble clic en `run_game.bat`.
 |-------------|-------------------------------------------|
 | WASD / Flechas | Moverse                               |
 | E           | Abrir cofre / Cerrar animación            |
-| Espacio     | Atacar al Criker (si tienes palo/espada)  |
+| Espacio     | Atacar al Criker (si tienes un arma)      |
 | F1          | Menú de configuración en tiempo real      |
 | F2          | Editor de plantillas de salas             |
 | R           | Regenerar el laberinto (menú F1)          |
+| 1 / 2 / 3   | Reemplazar ítem al tener inventario lleno |
+| Esc         | Descartar ítem nuevo en menú de reemplazo |
 
 ---
 
@@ -33,14 +35,12 @@ O en Windows, doble clic en `run_game.bat`.
 
 | Tipo       | Color grid | Cantidad por mundo | Contenido                     |
 |------------|------------|-------------------|-------------------------------|
-| Común      | Café       | 5–8               | Antorcha (50%), Palo (50%)    |
-| Épico      | Púrpura    | 2–3               | Brújula (50%), Mapa (50%)     |
-| Legendario | Dorado     | 1                 | Espada (100%)                 |
+| Común      | Café       | 5–8               | 20 ítems comunes (todos con igual peso) |
+| Épico      | Púrpura    | 2–3               | 20 ítems épicos               |
+| Legendario | Dorado     | 1                 | 20 ítems legendarios           |
 | Aleatorio  | Celeste    | 3–5               | Cualquier ítem de cualquier tier |
 
 ### Probabilidades del cofre aleatorio
-
-Al abrir un cofre aleatorio, se tira primero el tier:
 
 | Tier       | Probabilidad |
 |------------|-------------|
@@ -48,33 +48,67 @@ Al abrir un cofre aleatorio, se tira primero el tier:
 | Épico      | 30%         |
 | Legendario | 15%         |
 
-Luego se escoge un ítem dentro de ese tier según los pesos del pool.
-
 ### Apertura
 
 - El jugador debe pararse sobre el cofre y presionar **E**.
-- Aparece una animación de rueda horizontal.
-- Los ítems giran horizontalmente y deceleran hasta detenerse en uno.
-- Presiona **E** nuevamente para cerrar la animación.
-- Una vez abierto, el cofre desaparece del mapa.
+- Aparece una animación de rueda horizontal con todos los ítems posibles del tier.
+- Los ítems giran, deceleran y se detienen en el premio con efectos visuales.
+- Si el inventario tiene menos de 3 ítems, se añade automáticamente.
+- Si ya tienes 3, aparece un menú para reemplazar uno (1/2/3) o descartar (Esc).
+- Presiona **E** nuevamente para cerrar la animación (cierre deslizante).
 
 ---
 
-## Ítems
+## Ítems (60 totales)
 
-| Ítem      | Tier       | Efecto                                    |
-|-----------|------------|-------------------------------------------|
-| Antorcha  | Común      | Aumenta el radio de la linterna a 280px   |
-| Palo      | Común      | 3 golpes, aturde al Criker 3s             |
-| Brújula   | Épico      | Muestra la distancia a la salida en el HUD |
-| Mapa      | Épico      | (efecto visual pendiente)                  |
-| Espada    | Legendario | 5 golpes, aturde al Criker 3s             |
+### Tipos de ítem
 
-### Combate
+| Tipo        | Al recogerlo                              |
+|-------------|-------------------------------------------|
+| **weapon**  | Se equipa automáticamente, tiene usos     |
+| **passive** | Efecto permanente inmediato               |
+| **consumable** | De un solo uso (usables con Q)        |
+| **utility** | Herramientas de mapa / información        |
 
-- Si tienes **Palo** o **Espada**, presiona **Espacio** cuando el Criker esté cerca.
-- El Criker queda aturdido 3 segundos (color azul).
-- El arma pierde un uso; al llegar a 0 se rompe y desaparece del inventario.
+### Comunes (20)
+
+Antorcha (pasiva, +80px luz), Palo (arma, 3 golpes, aturde 3s), Poción de vida, Venda, Bengala, Cuerda (TP a sala segura), Piedra ruidosa, Trampa de pinchos, Yesca, Botas de fieltro (+15% vel), Tiza, Daga, Ración, Lentes de cerca, Látigo, Sal marina, Lupa, Pegamento, Vela, Cinta de señal.
+
+### Épicos (20)
+
+Brújula, Mapa, Capa de sigilo, Botas de velocidad (+40%), Señuelo, Honda (ranged, aturde 3s), Martillo, Escudo de madera (absorbe 1 golpe), Poción vigorizante, Linterna de minero, Mapa de tesoros, Garrote, Espantapájaros, Poción de fuego, Luz de hielo, Silbato de caza, Capa de camuflaje, Arco de caza (ranged), Poción de prisa, Cofre falso.
+
+### Legendarios (20)
+
+Espada, Arco largo (ranged), Amuleto de protección (absorbe 2), Esencia de la antorcha, Poción de la eternidad (3 vidas), Báculo de luz, Esfera de teletransporte, Armadura de diamante (absorbe 3), Espada de fuego, Lámpara de Aladino, Capa de las sombras, Sello de la luz (+400px), Poción de la salamandra, Martillo de guerra, Talismán de escape, Garras de dragón, Cristal de tiempo, Guante de poder, Capa de la tormenta, Cristal del vacío.
+
+---
+
+## Animación de cofre
+
+- Rueda horizontal infinita con todos los ítems del tier.
+- Al detenerse: destello de color según rareza, partículas estrella, confeti, latido del ítem, shader shine (barrido de luz).
+- Cierre deslizante suave hacia abajo.
+- Offset X ajustable desde el menú F1 (persistente en `ui_config.json`).
+
+---
+
+## Combate
+
+- Presiona **Espacio** cuando el Criker esté cerca con un arma equipada.
+- Cada arma tiene usos limitados y duración de aturdimiento distinta.
+- Armas ranged (Honda, Arco de caza, Arco largo) pueden aturdir a distancia.
+- Las armas se priorizan por rareza (legendaria > épica > común).
+- Escudos absorben golpes del Criker antes de perder vidas.
+
+---
+
+## Inventario
+
+- Máximo **3 ítems** simultáneos.
+- Se muestra en la esquina inferior derecha con color y usos restantes.
+- Al abrir un cofre con el inventario lleno, aparece un menú para reemplazar o descartar.
+- Los pasivos (Antorcha, Brújula, etc.) ocupan un slot pero dan efecto permanente.
 
 ---
 
@@ -119,37 +153,6 @@ Luego se escoge un ítem dentro de ese tier según los pesos del pool.
 
 ---
 
-## Tareas realizadas
-
-- [x] Generación procedural de laberintos (Perlin + rooms + spine + branches + loops)
-- [x] Editor de plantillas de salas (F2) con soporte de ratón
-- [x] Sistema de iluminación con shader GLSL (linterna + luces estáticas)
-- [x] Enemigo Criker con IA (patrulla, alerta, caza, búsqueda)
-- [x] Importación de salas procedurales A–H a `room_templates.lua`
-- [x] Reconocimiento de salas segura/salida/tesoro en templates
-- [x] Soporte de ratón en el editor (click, arrastrar)
-- [x] Sistema de ítems (5 tipos con pools y pesos)
-- [x] Sistema de cofres (4 tiers: común, épico, legendario, aleatorio)
-- [x] Animación de rueda horizontal al abrir cofres
-- [x] Combate cuerpo a cuerpo (aturde al Criker con armas)
-- [x] Efecto de antorcha (aumenta radio de luz)
-- [x] Brújula (distancia a salida en HUD)
-- [x] Inventario visible en HUD (esquina superior derecha)
-
-## Tareas pendientes / por pulir
-
-- [ ] **Mapa**: Implementar efecto visual (minimapa o tile reveal)
-- [ ] **Sonido**: Efectos de paso, apertura de cofre, ataque, etc.
-- [ ] **Múltiples cofres legendarios**: Permitir más de 1 por mundo en salas grandes
-- [ ] **Mejorar la detección de "zona segura"**: Que el Criker no pueda entrar en salas con cofres abiertos
-- [ ] **Persistencia**: Guardar progreso (ítems recogidos, cofres abiertos)
-- [ ] **UI/UX pulido**: Tooltips en ítems, feedback visual al golpear
-- [ ] **Optimización**: El escaneo de tiles para cofres en pasillos podría ser más eficiente
-- [ ] **Más variedad de ítems**: Pociones, llaves, trampas
-- [ ] **Música ambiental** y efectos de sonido
-
----
-
 ## Archivos del proyecto
 
 | Archivo               | Propósito                                    |
@@ -158,15 +161,14 @@ Luego se escoge un ítem dentro de ese tier según los pesos del pool.
 | `maze.lua`            | Generación procedural del laberinto          |
 | `player.lua`          | Jugador: movimiento, animación, dibujo       |
 | `criker.lua`          | Enemigo: IA, estados, dibujo                |
-| `items.lua`           | Definiciones de ítems e inventario           |
+| `items.lua`           | 60 definiciones de ítems e inventario        |
 | `vault.lua`           | Sistema de cofres (colocación, apertura)     |
-| `chest_animation.lua` | Animación de rueda horizontal                |
+| `chest_animation.lua` | Animación de rueda con efectos visuales      |
 | `debugInfo.lua`       | Overlay de depuración                        |
 | `room_templates.lua`  | Plantillas de salas personalizadas           |
 | `perlin.lua`          | Ruido Perlin para degradar paredes           |
 | `json.lua`            | Decodificador JSON para configuración        |
-| `shaders/`            | Shaders GLSL para iluminación               |
-| `maze_config.json`    | Configuración por defecto del laberinto      |
+| `shaders/`            | Shaders GLSL (light_falloff, shine)          |
 
 ---
 
@@ -181,3 +183,4 @@ Edita `maze_config.json` o usa el menú **F1** en tiempo real para ajustar:
 - `loopChance`: Probabilidad de crear lazos
 - `perlinThresh`: Umbral de ruido Perlin para degradar paredes
 - `seed`: Semilla determinista (omite para aleatorio)
+- `Offset X`: Ajuste de centrado de la animación del cofre (persistente)
