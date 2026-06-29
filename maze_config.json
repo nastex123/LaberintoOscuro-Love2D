@@ -1,0 +1,11 @@
+{
+  "cols": 145,
+  "rows": 145,
+  "tile": 75,
+  "roomCount": [16, 20],
+  "branchCount": [6, 12],
+  "branchLen": [30, 30],
+  "loopChance": 0.8,
+  "perlinThresh": 0.25,
+  "seed": null
+}
