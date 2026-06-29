@@ -409,9 +409,6 @@ end
 
 function Maze:carveRelicario(r)
     self:carveEmpty(r)
-    if r.cy > 0 and r.cx > 0 and r.cy < self.rows-1 and r.cx < self.cols-1 and not self.gridSpawnSafe[r.cy][r.cx] then
-        self.grid[r.cy][r.cx] = 4
-    end
 end
 
 function Maze:carveBoveda(r)
@@ -440,7 +437,7 @@ end
 function Maze:carveTemplate(r)
     local tmpl = r.template
     if not tmpl then return end
-    local foundL, foundR
+    local foundL
     for ty, row in ipairs(tmpl.grid) do
         for tx = 1, #row do
             local ch = row:sub(tx, tx)
@@ -454,11 +451,18 @@ function Maze:carveTemplate(r)
                         self.grid[gy][gx] = 3
                         foundL = true
                     elseif ch == 'X' then
-                        self.grid[gy][gx] = 2
-                        self.exitCell = {x = gx, y = gy}
+                        self.grid[gy][gx] = 0
+                        if not self.exitCell then
+                            self.exitCell = {x = gx, y = gy}
+                        end
                     elseif ch == 'R' then
+                        self.grid[gy][gx] = 5
+                    elseif ch == 'C' then
                         self.grid[gy][gx] = 4
-                        foundR = true
+                    elseif ch == 'G' then
+                        self.grid[gy][gx] = 6
+                    elseif ch == '?' then
+                        self.grid[gy][gx] = 7
                     else
                         self.grid[gy][gx] = 0
                     end
@@ -468,7 +472,6 @@ function Maze:carveTemplate(r)
         end
     end
     if foundL then self.safeRoom = r end
-    if foundR then self.treasureRoom = r end
 end
 
 function Maze:degradeEdges()
@@ -500,13 +503,14 @@ function Maze:forceBorderRing()
 end
 
 function Maze:setExitCell()
-    if self.exitCell then return end
-    if not self.exitRoom then return end
-    local ex = math.max(0, math.min(self.exitRoom.cx, self.cols - 1))
-    local ey = math.max(0, math.min(self.exitRoom.cy, self.rows - 1))
-    self.exitCell = {x = ex, y = ey}
-    if self.grid[ey] then
-        self.grid[ey][ex] = 2
+    if not self.exitCell then
+        if not self.exitRoom then return end
+        local ex = math.max(0, math.min(self.exitRoom.cx, self.cols - 1))
+        local ey = math.max(0, math.min(self.exitRoom.cy, self.rows - 1))
+        self.exitCell = {x = ex, y = ey}
+    end
+    if self.grid[self.exitCell.y] then
+        self.grid[self.exitCell.y][self.exitCell.x] = 2
     end
 end
 
@@ -579,7 +583,10 @@ function Maze:draw(camera)
                 if val == 1 then col = {0.176,0.176,0.227}          -- #2d2d3a wall
                 elseif val == 2 then col = {1,0.867,0}                -- #ffdd00 exit
                 elseif val == 3 then col = {0.267,0.533,0.667}        -- #4488aa safe light
-                elseif val == 4 then col = {0.533,0.4,0.267}          -- #886644 relic
+                elseif val == 4 then col = {0.533,0.4,0.267}          -- #886644 common vault
+                elseif val == 5 then col = {0.533,0.267,0.667}        -- #8844aa epic vault
+                elseif val == 6 then col = {0.867,0.667,0}            -- #ddaa00 legendary vault
+                elseif val == 7 then col = {0.4,0.8,1}                -- #66ccff random vault
                 else col = {0.039,0.039,0.039}                       -- #0a0a0a floor
                 end
                 love.graphics.setColor(col)

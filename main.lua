@@ -4,6 +4,9 @@ local Maze   = require "maze"
 local Player = require "player"
 local Criker = require "criker"
 local Debug  = require "debugInfo"
+local Items  = require "items"
+local Vault  = require "vault"
+local ChestAnim = require "chest_animation"
 
 local TILE_SIZE = 28
 local MAZE_COLS = 140
@@ -35,8 +38,8 @@ local editor = {
     cursorX = 1, cursorY = 1, brush = 0,
     width = 10, height = 10, name = "Nueva sala",
 }
-local brushChars = {[0]='.', [1]='#', [2]='X', [3]='L', [4]='R'}
-local brushNames = {[0]="Suelo", [1]="Pared", [2]="Salida", [3]="Luz", [4]="Relicario"}
+local brushChars = {[0]='.', [1]='#', [2]='X', [3]='L', [4]='R', [5]='C', [6]='G', [7]='?'}
+local brushNames = {[0]="Suelo", [1]="Pared", [2]="Salida", [3]="Luz", [4]="Cofre épico", [5]="Cofre común", [6]="Cofre legendario", [7]="Cofre aleatorio"}
 
 local function setGridChar(grid, x, y, ch)
     local row = grid[y]
@@ -229,10 +232,14 @@ end
     end
 
     player = Player:new()
+    player.inventory = {}
     criker = Criker:new()
     if maze.startRoom then
         player:setPos(maze.startRoom, maze)
     end
+
+    -- Place vaults
+    Vault:placeAll(maze)
 
     initCanvases()
     loadShaders()
@@ -311,6 +318,9 @@ function love.keypressed(key)
         elseif key == "3" then editor.brush = 3
         elseif key == "4" then editor.brush = 2
         elseif key == "5" then editor.brush = 4
+        elseif key == "6" then editor.brush = 5
+        elseif key == "7" then editor.brush = 6
+        elseif key == "8" then editor.brush = 7
         elseif key == "s" then
             saveEditorData()
             package.loaded["room_templates"] = nil
@@ -367,6 +377,38 @@ function love.keypressed(key)
         end
         return
     end
+    -- Chest animation close
+    if key == "e" and ChestAnim.state == "done" then
+        ChestAnim.state = "idle"
+        return
+    end
+
+    -- Open vault
+    if key == "e" and ChestAnim.state == "idle" and state == "play" then
+        local vault, tx, ty = Vault:playerOnVault(player, maze)
+        if vault then
+            local itemId, tier = Vault:openVault(maze, tx, ty)
+            if itemId then
+                Items.give(player, itemId)
+                ChestAnim:start(tier)
+            end
+        end
+        return
+    end
+
+    -- Attack with weapon
+    if key == "space" and ChestAnim.state == "idle" and state == "play" then
+        local weapon = Items.getWeapon(player)
+        if weapon and criker.active then
+            local d = math.sqrt((player.x - criker.x)^2 + (player.y - criker.y)^2)
+            if d < 45 then
+                Items.useWeapon(player)
+                criker:stun(3)
+            end
+        end
+        return
+    end
+
     -- UI toggle
     if key == "f1" then
         ui.active = not ui.active
@@ -433,12 +475,13 @@ elseif key == "left" then
             end
         elseif key == "r" then
         -- Regenerar el laberinto con la configuración actual
-        -- Reset static lights
         lights = {}
         maze = Maze:new(configRef)
         maze:generate()
         player = Player:new()
+        player.inventory = {}
         criker = Criker:new()
+        Vault:placeAll(maze)
         player:setPos(maze.startRoom, maze)
         if maze.exitCell then
             addLight(maze.exitCell.x * TILE_SIZE, maze.exitCell.y * TILE_SIZE,
@@ -495,6 +538,10 @@ end
 local crikerSpawnTimer = 0
 function love.update(dt)
     if editor.active then return end
+    if ChestAnim.state ~= "idle" then
+        ChestAnim:update(dt)
+        return
+    end
     if state ~= "play" then return end
     time = time + dt
     if not criker.active then
@@ -531,7 +578,21 @@ local function drawUI()
         love.graphics.rectangle("fill", 0, 0, 12, love.graphics.getHeight())
         love.graphics.rectangle("fill", love.graphics.getWidth()-12, 0, 12, love.graphics.getHeight())
     end
-    -- UI panel drawn later (see section near line 401)
+    -- Compass (brújula)
+    if Items.has(player, "brujula") and maze.exitCell then
+        local ed = math.floor(math.sqrt((player.x - maze.exitCell.x*maze.tile)^2 + (player.y - maze.exitCell.y*maze.tile)^2))
+        love.graphics.setColor(0.3,0.3,1)
+        love.graphics.setFont(love.graphics.newFont(14))
+        love.graphics.print("Salida: "..ed.."px", 20, 55)
+    end
+    -- Weapon durability (left side)
+    local weapon = Items.getWeapon(player)
+    if weapon then
+        local wy = Items.has(player, "brujula") and 75 or 55
+        love.graphics.setColor(1,1,1)
+        love.graphics.setFont(love.graphics.newFont(14))
+        love.graphics.print(Items.defs[weapon.id].nombre.." ["..weapon.uses.."/"..weapon.maxUses.."]", 20, wy)
+    end
 end
 
 local function drawFlashlight()
@@ -541,7 +602,8 @@ local function drawFlashlight()
 
     -- Flicker
     local flicker = math.sin(time*12)*8 + math.sin(time*23)*5 + (math.random()-0.5)*6
-    local radius  = 200 + flicker
+    local baseRadius = Items.has(player, "antorch") and 280 or 200
+    local radius  = baseRadius + flicker
 
     -- Player screen position
     local px = player.x - camera.x
@@ -635,7 +697,10 @@ local function drawEditor()
             if ch == '#' then color = {0.176,0.176,0.227}
             elseif ch == 'X' then color = {1,0.867,0}
             elseif ch == 'L' then color = {0.267,0.533,0.667}
-            elseif ch == 'R' then color = {0.533,0.4,0.267}
+            elseif ch == 'R' then color = {0.533,0.267,0.667}
+            elseif ch == 'C' then color = {0.533,0.4,0.267}
+            elseif ch == 'G' then color = {0.867,0.667,0}
+            elseif ch == '?' then color = {0.4,0.8,1}
             else color = {0.039,0.039,0.039}
             end
             love.graphics.setColor(color)
@@ -667,7 +732,7 @@ local function drawEditor()
     local helpY = sh - 130
     local help = {
         "Flechas: mover cursor  Click izq: pintar  Der: borrar",
-        "1=Suelo  2=Pared  3=Luz  4=Salida  5=Reliquia",
+        "1=Suelo  2=Pared  3=Luz  4=Salida  5=Épico  6=Común  7=Legendario  8=Aleatorio",
         "R: +fila  Shift+R: -fila",
         "C: +col  Shift+C: -col",
         "Tab: siguiente sala  N: nueva  S: guardar  Esc: salir",
@@ -702,6 +767,31 @@ function love.draw()
     love.graphics.setColor(1,1,1)
     drawUI()
     Debug:draw(maze, player, criker, lives, camera)
+
+    -- Inventory HUD (top-right)
+    do
+        local invY = 10
+        love.graphics.setFont(love.graphics.newFont(12))
+        for id, data in pairs(player.inventory) do
+            local def = Items.defs[id]
+            if def then
+                local txt = def.nombre
+                if data and data.uses then
+                    txt = txt .. " ["..data.uses.."/"..def.maxUses.."]"
+                end
+                love.graphics.setColor(def.color)
+                love.graphics.rectangle("fill", love.graphics.getWidth() - 155, invY, 12, 12)
+                love.graphics.setColor(1,1,1)
+                love.graphics.print(txt, love.graphics.getWidth() - 140, invY - 2)
+                invY = invY + 16
+            end
+        end
+    end
+
+    -- Chest animation overlay
+    if ChestAnim.state ~= "idle" then
+        ChestAnim:draw()
+    end
 
 -- UI panel (runtime editing)
 if ui.active then

@@ -20,6 +20,7 @@ function Criker:new()
     self.patrolChangeTimer = 0
     self.bangTimer = 0
     self.bangScale = 0
+    self.stunTimer = 0
     return self
 end
 
@@ -79,8 +80,17 @@ function Criker:spawnRandom(maze)
     self.state = "patrol"
 end
 
+function Criker:stun(duration)
+    self.stunTimer = duration
+    self.state = "patrol"
+end
+
 function Criker:update(player, maze, dt)
     if not self.active then return end
+    if self.stunTimer > 0 then
+        self.stunTimer = self.stunTimer - dt
+        return
+    end
     local DETECT_RADIUS = 145
     local LOSE_RADIUS = 200
     local CHASE_SPEED = 95
@@ -187,7 +197,8 @@ function Criker:draw(camera)
     if not self.active then return end
     local sx = self.x - camera.x
     local sy = self.y - camera.y
-    if self.state == "chase" then love.graphics.setColor(1,0,0) -- #ff3333 approximated
+    if self.stunTimer > 0 then love.graphics.setColor(0.5,0.5,0.8) -- stunned
+    elseif self.state == "chase" then love.graphics.setColor(1,0,0) -- #ff3333 approximated
     elseif self.state == "alert" then love.graphics.setColor(1,0.53,0) -- #ff8800 approximated
     elseif self.state == "search" then love.graphics.setColor(1,0.4,0.4) -- #ff6666 approximated
     else love.graphics.setColor(0.67,0.27,0.27) -- #aa4444 approximated
