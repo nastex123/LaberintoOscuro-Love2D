@@ -26,6 +26,8 @@ local shaderNames = {}
 
 -- Table de luces estáticas
 local lights = {}
+local json = require "json"
+local UI_CONFIG_PATH = "ui_config.json"
 
 local function addLight(x, y, radius, color, falloff)
     lights[#lights+1] = {x=x, y=y, radius=radius, color=color, falloff=falloff or 2}
@@ -141,7 +143,6 @@ function love.load()
     love.window.setTitle("Luz en la Oscuridad — Exploracion")
 
     --=== 1. Cargar configuración por defecto (JSON) ===
-    local json = require "json"
     local configPath = "maze_config.json"
     local configData = love.filesystem.read(configPath) or ""
     local config = {
@@ -150,14 +151,14 @@ function love.load()
         branchLen = {30, 30}, loopChance = 0.8,
         perlinThresh = 0.25, seed = nil,
     }
-if configData ~= "" then
-    local ok, parsed = pcall(json.decode, configData)
-    if ok then
-        for k, v in pairs(parsed) do config[k] = v end
-    else
-        print("Error al leer maze_config.json:", parsed)
+    if configData ~= "" then
+        local ok, parsed = pcall(json.decode, configData)
+        if ok then
+            for k, v in pairs(parsed) do config[k] = v end
+        else
+            print("Error al leer maze_config.json:", parsed)
+        end
     end
-end
     --=== 2. Sobrescribir con argumentos de línea de comandos ===
     local function applyArg(key, value)
         if key == "cols" or key == "rows" or key == "tile" then
@@ -251,7 +252,8 @@ end
     ui = {
         active = false,
         selection = 1,
-        params = {"cols","rows","tile","roomCount","branchCount","branchLen","loopChance","perlinThresh"}
+        -- Añadimos las nuevas opciones de cofres y un separador visual
+        params = {"cols","rows","tile","roomCount","branchCount","branchLen","loopChance","perlinThresh", "- CHEST -", "Open Comun", "Open Epic", "Open Legend", "Offset X"}
     }
     -- Descripciones breves de cada parámetro del menú UI (F1)
     paramDescriptions = {
@@ -262,9 +264,29 @@ end
         branchCount = "Rango [mín‑máx] de ramas (pasillos) a crear",
         branchLen = "Rango [mín‑máx] de longitud de cada rama",
         loopChance = "Probabilidad (0‑1) de crear lazos entre ramas",
-        perlinThresh = "Umbral (0‑1) de ruido Perlin para degradar paredes"
+        perlinThresh = "Umbral (0‑1) de ruido Perlin para degradar paredes",
+        -- Nuevas descripciones para los cofres
+        ["Open Comun"] = "Presiona Enter para abrir un cofre Común (sin animación)",
+        ["Open Epic"] = "Presiona Enter para abrir un cofre Épico (sin animación)",
+        ["Open Legend"] = "Presiona Enter para abrir un cofre Legendario (sin animación)",
+        ["Offset X"] = "Desplazamiento manual de la rueda (-/+ 5px)",
     }
     configRef = config   -- referencia global para la UI
+    chestOffsetX = 0    -- ajuste manual para centrar la animación
+
+    -- Variables para el sistema de reemplazo de inventario
+    pendingItem = nil
+    pendingTier = nil
+    waitingForDecision = false
+
+    -- Cargar configuración de UI (offset del cofre)
+    local uiData = love.filesystem.read(UI_CONFIG_PATH)
+    if uiData and uiData ~= "" then
+        local ok, parsed = pcall(json.decode, uiData)
+        if ok and parsed.chestOffsetX ~= nil then
+            chestOffsetX = parsed.chestOffsetX
+        end
+    end
 
     --=== 6. Luz estática de salida (amarilla) ===
     if maze.exitCell then
@@ -272,7 +294,6 @@ end
                  120, {1,0.9,0}, 2)  -- amarillo
     end
 end
-    -- exit light and init handled earlier
 
 -- Input handling – keyboard only
 local function getInput()
@@ -284,8 +305,47 @@ local function getInput()
     return {x = x, y = y}
 end
 
+local function getInventorySlots(player)
+    local slots = {}
+    for id, data in pairs(player.inventory) do
+        table.insert(slots, {id = id, data = data, def = Items.defs[id]})
+    end
+    table.sort(slots, function(a, b) return a.def.nombre < b.def.nombre end)
+    return slots
+end
+
+local function saveUIConfig()
+    local data = { chestOffsetX = chestOffsetX }
+    local content = json.encode(data)
+    love.filesystem.write(UI_CONFIG_PATH, content)
+end
+
 -- No shader switching: solo se usa el shader Falloff
 function love.keypressed(key)
+    -- Prioridad: Menú de reemplazo de inventario
+    if waitingForDecision and uiState == "inventory_prompt" then
+        if key == "escape" then
+            pendingItem = nil
+            pendingTier = nil
+            waitingForDecision = false
+            uiState = nil
+            return
+        elseif key == "1" or key == "2" or key == "3" then
+            local idx = tonumber(key)
+            local slots = getInventorySlots(player)
+            if slots[idx] then
+                player.inventory[slots[idx].id] = nil
+                Items.give(player, pendingItem)
+                pendingItem = nil
+                pendingTier = nil
+                waitingForDecision = false
+                uiState = nil
+            end
+            return
+        end
+        return
+    end
+
     -- Editor toggle
     if key == "f2" then
         editor.active = not editor.active
@@ -379,7 +439,7 @@ function love.keypressed(key)
     end
     -- Chest animation close
     if key == "e" and ChestAnim.state == "done" then
-        ChestAnim.state = "idle"
+        ChestAnim:close()
         return
     end
 
@@ -389,8 +449,10 @@ function love.keypressed(key)
         if vault then
             local itemId, tier = Vault:openVault(maze, tx, ty)
             if itemId then
-                Items.give(player, itemId)
-                ChestAnim:start(tier)
+                pendingItem = itemId
+                pendingTier = tier
+                waitingForDecision = false
+                ChestAnim:start(tier, itemId, chestOffsetX)
             end
         end
         return
@@ -416,65 +478,76 @@ function love.keypressed(key)
     end
     if not ui.active then return end
 
+    -- Navegación y acciones del menú
     local sel = ui.selection
     local param = ui.params[sel]
+
     if key == "up" then
         ui.selection = (sel - 2) % #ui.params + 1
     elseif key == "down" then
         ui.selection = sel % #ui.params + 1
-        elseif key == "right" then
-            -- increment
-            if param == "roomCount" or param == "branchCount" or param == "branchLen" then
-                if type(configRef[param]) ~= "table" then
-                    local cur = configRef[param] or 1
-                    configRef[param] = {cur, cur}
-                end
-                configRef[param][2] = (configRef[param][2] or configRef[param][1]) + 1
-            elseif param == "loopChance" or param == "perlinThresh" then
-                configRef[param] = math.min(1, (configRef[param] or 0) + 0.05)
-            else
-                configRef[param] = (configRef[param] or 0) + 1
+    elseif key == "right" then
+        if param == "Offset X" then
+            chestOffsetX = chestOffsetX + 5
+            saveUIConfig()
+            return
+        end
+        if param == "Open Comun" or param == "Open Epic" or param == "Open Legend" or param == "- CHEST -" then
+            return
+        end
+        if param == "roomCount" or param == "branchCount" or param == "branchLen" then
+            if type(configRef[param]) ~= "table" then
+                local cur = configRef[param] or 1
+                configRef[param] = {cur, cur}
             end
-elseif key == "left" then
-            -- decrement max
-            if param == "roomCount" or param == "branchCount" or param == "branchLen" then
-                if type(configRef[param]) ~= "table" then
-                    local cur = configRef[param] or 1
-                    configRef[param] = {cur, cur}
-                end
-                configRef[param][2] = math.max(1, (configRef[param][2] or configRef[param][1]) - 1)
-            elseif param == "loopChance" or param == "perlinThresh" then
-                configRef[param] = math.max(0, (configRef[param] or 0) - 0.05)
-            else
-                configRef[param] = math.max(1, (configRef[param] or 1) - 1)
+            configRef[param][2] = (configRef[param][2] or configRef[param][1]) + 1
+        elseif param == "loopChance" or param == "perlinThresh" then
+            configRef[param] = math.min(1, (configRef[param] or 0) + 0.05)
+        else
+            configRef[param] = (configRef[param] or 0) + 1
+        end
+    elseif key == "left" then
+        if param == "Offset X" then
+            chestOffsetX = chestOffsetX - 5
+            saveUIConfig()
+            return
+        end
+        if param == "Open Comun" or param == "Open Epic" or param == "Open Legend" or param == "- CHEST -" then
+            return
+        end
+        if param == "roomCount" or param == "branchCount" or param == "branchLen" then
+            if type(configRef[param]) ~= "table" then
+                local cur = configRef[param] or 1
+                configRef[param] = {cur, cur}
             end
-        elseif key == "home" then
-            -- increment min
-            if param == "roomCount" or param == "branchCount" or param == "branchLen" then
-                if type(configRef[param]) ~= "table" then
-                    local cur = configRef[param] or 1
-                    configRef[param] = {cur, cur}
-                end
-                local minVal = configRef[param][1] or configRef[param][2] or 1
-                local maxVal = configRef[param][2] or minVal
-                if minVal + 1 <= maxVal then
-                    configRef[param][1] = minVal + 1
-                end
+            configRef[param][2] = math.max(1, (configRef[param][2] or configRef[param][1]) - 1)
+        elseif param == "loopChance" or param == "perlinThresh" then
+            configRef[param] = math.max(0, (configRef[param] or 0) - 0.05)
+        else
+            configRef[param] = math.max(1, (configRef[param] or 1) - 1)
+        end
+    elseif key == "return" or key == "kpenter" then
+        local tier = nil
+        if param == "Open Comun" then
+            tier = "common"
+        elseif param == "Open Epic" then
+            tier = "epic"
+        elseif param == "Open Legend" then
+            tier = "legendary"
+        end
+        
+        if tier and ChestAnim.state == "idle" then
+            local itemId = Items.randomFromTier(tier)
+            if itemId then
+                pendingItem = itemId
+                pendingTier = tier
+                waitingForDecision = false
+                ChestAnim:start(tier, itemId, chestOffsetX)
             end
-        elseif key == "end" then
-            -- decrement min
-            if param == "roomCount" or param == "branchCount" or param == "branchLen" then
-                if type(configRef[param]) ~= "table" then
-                    local cur = configRef[param] or 1
-                    configRef[param] = {cur, cur}
-                end
-                local minVal = configRef[param][1] or configRef[param][2] or 1
-                if minVal - 1 >= 1 then
-                    configRef[param][1] = minVal - 1
-                end
-            end
-        elseif key == "r" then
-        -- Regenerar el laberinto con la configuración actual
+        end
+        return
+    elseif key == "r" then
+        -- Regenerar el laberinto con la configuración actual (código original)
         lights = {}
         maze = Maze:new(configRef)
         maze:generate()
@@ -484,8 +557,7 @@ elseif key == "left" then
         Vault:placeAll(maze)
         player:setPos(maze.startRoom, maze)
         if maze.exitCell then
-            addLight(maze.exitCell.x * TILE_SIZE, maze.exitCell.y * TILE_SIZE,
-                     120, {1,0.9,0}, 2)
+            addLight(maze.exitCell.x * TILE_SIZE, maze.exitCell.y * TILE_SIZE, 120, {1,0.9,0}, 2)
         end
     elseif key == "escape" then
         ui.active = false
@@ -540,29 +612,46 @@ function love.update(dt)
     if editor.active then return end
     if ChestAnim.state ~= "idle" then
         ChestAnim:update(dt)
-        return
     end
-    if state ~= "play" then return end
-    time = time + dt
-    if not criker.active then
-        crikerSpawnTimer = crikerSpawnTimer + dt
-        if crikerSpawnTimer >= 1.5 then
-            criker:spawnValidated(maze)
+    if ChestAnim.state == "idle" then
+        if state == "play" then
+            time = time + dt
+            if not criker.active then
+                crikerSpawnTimer = crikerSpawnTimer + dt
+                if crikerSpawnTimer >= 1.5 then
+                    criker:spawnValidated(maze)
+                end
+            end
+            local input = getInput()
+            player:update(input, maze, dt)
+            if criker.active then criker:update(player, maze, dt) end
+            if criker.active and math.sqrt((player.x - criker.x)^2 + (player.y - criker.y)^2) < 15 then
+                lives = lives - 1
+                criker:spawnValidated(maze)
+                if lives <= 0 then state = "dead" end
+            end
+            if maze:isExit(player.x, player.y) then state = "win" end
+            camera.x = camera.x + (player.x - love.graphics.getWidth()/2 - camera.x) * 0.1
+            camera.y = camera.y + (player.y - love.graphics.getHeight()/2 - camera.y) * 0.1
         end
     end
-    local input = getInput()
-    player:update(input, maze, dt)
-    if criker.active then criker:update(player, maze, dt) end
-    -- collision
-    if criker.active and math.sqrt((player.x - criker.x)^2 + (player.y - criker.y)^2) < 15 then
-        lives = lives - 1
-        criker:spawnValidated(maze)
-        if lives <= 0 then state = "dead" end
+
+    -- Lógica post-animación (siempre se ejecuta, incluso con animación activa)
+    if pendingItem and not waitingForDecision then
+        if ChestAnim.state == "done" then
+            local count = 0
+            for _ in pairs(player.inventory) do count = count + 1 end
+
+            if count >= 3 then
+                waitingForDecision = true
+                uiState = "inventory_prompt"
+            else
+                Items.give(player, pendingItem)
+                pendingItem = nil
+                pendingTier = nil
+            end
+        end
     end
-    if maze:isExit(player.x, player.y) then state = "win" end
-    -- camera follows player
-    camera.x = camera.x + (player.x - love.graphics.getWidth()/2 - camera.x) * 0.1
-    camera.y = camera.y + (player.y - love.graphics.getHeight()/2 - camera.y) * 0.1
 end
 
 local function drawUI()
@@ -768,9 +857,13 @@ function love.draw()
     drawUI()
     Debug:draw(maze, player, criker, lives, camera)
 
-    -- Inventory HUD (top-right)
+    -- Inventory HUD (bottom-right)
     do
-        local invY = 10
+        local sw, sh = love.graphics.getDimensions()
+        local invX = sw - 155
+        local invCount = 0
+        for _ in pairs(player.inventory) do invCount = invCount + 1 end
+        local invY = sh - 16 * math.max(1, invCount) - 10
         love.graphics.setFont(love.graphics.newFont(12))
         for id, data in pairs(player.inventory) do
             local def = Items.defs[id]
@@ -780,9 +873,9 @@ function love.draw()
                     txt = txt .. " ["..data.uses.."/"..def.maxUses.."]"
                 end
                 love.graphics.setColor(def.color)
-                love.graphics.rectangle("fill", love.graphics.getWidth() - 155, invY, 12, 12)
+                love.graphics.rectangle("fill", invX, invY, 12, 12)
                 love.graphics.setColor(1,1,1)
-                love.graphics.print(txt, love.graphics.getWidth() - 140, invY - 2)
+                love.graphics.print(txt, invX + 15, invY - 2)
                 invY = invY + 16
             end
         end
@@ -793,35 +886,100 @@ function love.draw()
         ChestAnim:draw()
     end
 
--- UI panel (runtime editing)
-if ui.active then
-    local sw, sh = love.graphics.getDimensions()
-    love.graphics.setColor(0,0,0,0.6)
-    love.graphics.rectangle("fill", 10, 10, 250, (#ui.params+4)*18)
-    love.graphics.setColor(1,1,1)
-    love.graphics.setFont(love.graphics.newFont(14))
-    love.graphics.print("Seed: "..tostring(currentSeed), 20, 20)
-    for i, p in ipairs(ui.params) do
-        local val = configRef[p]
-        local txt = p..": "
-        if type(val) == "table" then
-            txt = txt .. "["..val[1]..","..val[2].."]"
-        else
-            txt = txt .. tostring(val)
+    -- Menú de reemplazo de inventario
+    if waitingForDecision and uiState == "inventory_prompt" and pendingItem then
+        local sw, sh = love.graphics.getDimensions()
+
+        love.graphics.setColor(0, 0, 0, 0.8)
+        love.graphics.rectangle("fill", 0, 0, sw, sh)
+
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.setFont(love.graphics.newFont(22))
+        love.graphics.printf("¡Inventario lleno! Elige qué reemplazar", 0, sh/2 - 120, sw, "center")
+
+        local slots = getInventorySlots(player)
+        local startX = sw/2 - 130
+        local startY = sh/2 - 20
+
+        for i, slot in ipairs(slots) do
+            local x = startX + (i-1) * 130
+            local y = startY
+            local def = slot.def
+
+            love.graphics.setColor(def.color)
+            love.graphics.rectangle("fill", x, y, 80, 80)
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.rectangle("line", x, y, 80, 80)
+
+            love.graphics.setFont(love.graphics.newFont(18))
+            love.graphics.setColor(1, 0.5, 0)
+            love.graphics.printf("["..i.."]", x, y - 25, 80, "center")
+
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.setFont(love.graphics.newFont(14))
+            local txt = def.nombre
+            if type(slot.data) == "table" and slot.data.uses then
+                txt = txt .. " ["..slot.data.uses.."/"..def.maxUses.."]"
+            end
+            love.graphics.printf(txt, x, y + 85, 80, "center")
         end
-        if i == ui.selection then love.graphics.setColor(1,1,0) else love.graphics.setColor(1,1,1) end
-        love.graphics.print(txt, 20, 20 + i*18)
-        if i == ui.selection then
-            local desc = paramDescriptions[p] or ""
-            love.graphics.setColor(0.8,0.8,0.8)
-            love.graphics.print(desc, 150, 20 + i*18 + 20)
+
+        love.graphics.setColor(0.8, 0.8, 0.8)
+        love.graphics.setFont(love.graphics.newFont(14))
+        love.graphics.printf("Presiona 1, 2 o 3 para soltar ese objeto (Esc = descartar el nuevo)", 0, sh/2 + 130, sw, "center")
+    end
+
+    -- UI panel (runtime editing)
+    if ui.active then
+        local sw, sh = love.graphics.getDimensions()
+        love.graphics.setColor(0,0,0,0.6)
+        love.graphics.rectangle("fill", 10, 10, 350, (#ui.params+4)*18)
+        love.graphics.setColor(1,1,1)
+        love.graphics.setFont(love.graphics.newFont(14))
+        love.graphics.print("Seed: "..tostring(currentSeed), 20, 20)
+        for i, p in ipairs(ui.params) do
+            -- Construir el texto de la línea
+            local txt
+            if p == "- CHEST -" then
+                txt = "=== " .. p .. " ==="
+            elseif p == "Open Comun" or p == "Open Epic" or p == "Open Legend" then
+                txt = p
+            elseif p == "Offset X" then
+                txt = p .. ": " .. chestOffsetX
+            else
+                local val = configRef[p]
+                if type(val) == "table" then
+                    txt = p..": ["..val[1]..","..val[2].."]"
+                else
+                    txt = p..": "..tostring(val)
+                end
+            end
+
+            -- Color del texto
+            if p == "- CHEST -" then
+                love.graphics.setColor(0.8, 0.8, 0.8) -- Gris para el separador
+            elseif i == ui.selection then
+                love.graphics.setColor(1, 1, 0) -- Amarillo para el seleccionado
+            else
+                love.graphics.setColor(1, 1, 1) -- Blanco para el resto
+            end
+            love.graphics.print(txt, 20, 20 + i*18)
+
+            -- Mostrar descripción si está seleccionado
+            if i == ui.selection then
+                local desc = paramDescriptions[p] or ""
+                love.graphics.setColor(0.8,0.8,0.8)
+                love.graphics.print(desc, 160, 20 + i*18 + 20)
+            end
         end
     end
-    love.graphics.setColor(1,1,1)
-end
 
-    if editor.active then drawEditor() end
+    -- Editor overlay
+    if editor.active then
+        drawEditor()
+    end
 
+    -- Game over / Win states
     if state == "dead" then
         love.graphics.setColor(1,1,1)
         love.graphics.setFont(love.graphics.newFont(36))
