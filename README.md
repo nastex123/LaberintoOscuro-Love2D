@@ -1,4 +1,4 @@
-# Luz en la Oscuridad — Exploración
+/# Luz en la Oscuridad — Exploración
 
 Juego de exploración en laberintos generados proceduralmente hecho con Love2D.
 

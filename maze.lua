@@ -61,6 +61,7 @@ function Maze:generate()
     self:degradeEdges()
     self:forceBorderRing()
     self:setExitCell()
+    self:ensureConnectivity()
 end
 
 function Maze:createRooms()
@@ -511,6 +512,109 @@ function Maze:setExitCell()
     end
     if self.grid[self.exitCell.y] then
         self.grid[self.exitCell.y][self.exitCell.x] = 2
+    end
+end
+
+-- Recorre todas las celdas alcanzables desde (sx, sy) caminando solo por piso
+-- (cualquier valor de grid distinto de 1, que es el unico valor de pared).
+-- Devuelve una tabla visited[y][x] = true para cada celda alcanzada.
+function Maze:floodFill(sx, sy)
+    local visited = {}
+    for y = 0, self.rows - 1 do visited[y] = {} end
+    if sx < 0 or sy < 0 or sx >= self.cols or sy >= self.rows then return visited end
+    if not self.grid[sy] or self.grid[sy][sx] == 1 then return visited end
+
+    local queue = {{sx, sy}}
+    local head = 1
+    visited[sy][sx] = true
+    while head <= #queue do
+        local cx, cy = queue[head][1], queue[head][2]
+        head = head + 1
+        local neighbors = {{cx+1,cy},{cx-1,cy},{cx,cy+1},{cx,cy-1}}
+        for _, n in ipairs(neighbors) do
+            local nx, ny = n[1], n[2]
+            if nx >= 0 and ny >= 0 and nx < self.cols and ny < self.rows then
+                if not visited[ny][nx] and self.grid[ny][nx] ~= 1 then
+                    visited[ny][nx] = true
+                    table.insert(queue, {nx, ny})
+                end
+            end
+        end
+    end
+    return visited
+end
+
+-- Busca, a partir de (x, y), la celda transitable mas cercana (por distancia de
+-- cuadricula, ignorando paredes) que ya este marcada como alcanzable en 'visited'.
+-- Se usa para saber hacia donde cavar un pasillo de emergencia.
+function Maze:findNearestReachable(visited, x, y)
+    if x < 0 or y < 0 or x >= self.cols or y >= self.rows then return nil end
+    local queue = {{x, y}}
+    local seen = {}
+    seen[y] = {[x] = true}
+    local head = 1
+    while head <= #queue do
+        local cx, cy = queue[head][1], queue[head][2]
+        head = head + 1
+        if visited[cy] and visited[cy][cx] then
+            return cx, cy
+        end
+        local neighbors = {{cx+1,cy},{cx-1,cy},{cx,cy+1},{cx,cy-1}}
+        for _, n in ipairs(neighbors) do
+            local nx, ny = n[1], n[2]
+            if nx >= 0 and ny >= 0 and nx < self.cols and ny < self.rows then
+                seen[ny] = seen[ny] or {}
+                if not seen[ny][nx] then
+                    seen[ny][nx] = true
+                    table.insert(queue, {nx, ny})
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- Red de seguridad: garantiza que la sala inicial, todas las salas, la salida,
+-- y cualquier punto extra (por ejemplo cofres) sean alcanzables a pie desde el
+-- inicio. Si alguno quedo aislado por algun paso anterior de la generacion,
+-- cava un pasillo de emergencia hasta la zona conectada mas cercana.
+function Maze:ensureConnectivity(extraPoints)
+    if not self.startRoom then return end
+    local sx, sy = self.startRoom.cx, self.startRoom.cy
+    if self.grid[sy] and self.grid[sy][sx] == 1 then
+        self.grid[sy][sx] = 0 -- la sala inicial nunca debe ser pared
+    end
+
+    local targets = {}
+    for _, r in ipairs(self.rooms) do
+        table.insert(targets, {x = r.cx, y = r.cy})
+    end
+    if self.exitCell then
+        table.insert(targets, {x = self.exitCell.x, y = self.exitCell.y})
+    end
+    if extraPoints then
+        for _, p in ipairs(extraPoints) do
+            table.insert(targets, p)
+        end
+    end
+
+    local maxAttempts = 6
+    for attempt = 1, maxAttempts do
+        local visited = self:floodFill(sx, sy)
+        local repaired = false
+        for _, t in ipairs(targets) do
+            local tx, ty = t.x, t.y
+            if tx >= 0 and ty >= 0 and tx < self.cols and ty < self.rows then
+                if not (visited[ty] and visited[ty][tx]) then
+                    local nx, ny = self:findNearestReachable(visited, tx, ty)
+                    if nx then
+                        self:carvePath(tx, ty, nx, ny, "repair")
+                        repaired = true
+                    end
+                end
+            end
+        end
+        if not repaired then break end
     end
 end
 

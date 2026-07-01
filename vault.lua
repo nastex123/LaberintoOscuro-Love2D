@@ -121,6 +121,19 @@ function Vault:placeAll(maze)
         self:setVault(maze, corridorTiles[idx].tx, corridorTiles[idx].ty, "random")
         idx = idx + 1
     end
+
+    -- 5. Red de seguridad: garantizar que todos los cofres colocados sean
+    -- alcanzables a pie desde la sala inicial. Reutiliza la comprobacion del
+    -- laberinto (flood fill + reparacion automatica de pasillos).
+    if maze.ensureConnectivity then
+        local vaultPoints = {}
+        for y, row in pairs(Vault.data) do
+            for x, _ in pairs(row) do
+                table.insert(vaultPoints, {x = x, y = y})
+            end
+        end
+        maze:ensureConnectivity(vaultPoints)
+    end
 end
 
 function Vault:getVaultAt(tx, ty)
