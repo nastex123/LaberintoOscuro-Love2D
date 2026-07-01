@@ -254,7 +254,7 @@ function Criker:draw(camera)
         love.graphics.translate(sx, sy - 25)
         love.graphics.scale(self.bangScale, self.bangScale)
         love.graphics.setColor(1,1,1)
-        love.graphics.setFont(love.graphics.newFont(22))
+        love.graphics.setFont(fonts.f22)
         love.graphics.printf("!", 0, 0, 100, "center")
         love.graphics.pop()
     end

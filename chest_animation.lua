@@ -233,7 +233,7 @@ function ChestAnim:draw()
     end
 
     love.graphics.setColor(1, 1, 1)
-    love.graphics.setFont(love.graphics.newFont(24))
+    love.graphics.setFont(fonts.f24)
     local tierName = self.tierName or ""
     local title = (self.state == "result" or self.state == "done" or self.state == "closing")
         and ("¡Has encontrado!  [" .. tierName .. "]")
@@ -248,7 +248,7 @@ function ChestAnim:draw()
     love.graphics.setColor(0.3, 0.3, 0.4, 0.8)
     love.graphics.rectangle("line", 0, trackY, sw, trackH)
 
-    love.graphics.setFont(love.graphics.newFont(12))
+    love.graphics.setFont(fonts.f12)
 
     local startX = -self.itemWidth * 2
     local endX = sw + self.itemWidth * 2
@@ -323,14 +323,14 @@ function ChestAnim:draw()
         local def = Items.defs[self.targetItem]
         if def then
             love.graphics.setColor(1, 1, 1)
-            love.graphics.setFont(love.graphics.newFont(18))
+            love.graphics.setFont(fonts.f18)
             love.graphics.printf(def.nombre .. " — " .. def.desc, 0, self.centerY + 70, sw, "center")
         end
     end
 
     if self.state == "done" or self.state == "closing" then
         love.graphics.setColor(0.6, 0.6, 0.6)
-        love.graphics.setFont(love.graphics.newFont(14))
+        love.graphics.setFont(fonts.f14)
         love.graphics.printf("Presiona E para cerrar", 0, self.centerY + 100, sw, "center")
     end
 end

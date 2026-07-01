@@ -137,6 +137,17 @@ end
 function love.load()
     love.window.setTitle("Luz en la Oscuridad — Exploracion")
 
+    -- Precargar todas las fuentes (evita newFont en cada frame = memory leak)
+    fonts = {
+        f12 = love.graphics.newFont(12),
+        f14 = love.graphics.newFont(14),
+        f16 = love.graphics.newFont(16),
+        f18 = love.graphics.newFont(18),
+        f22 = love.graphics.newFont(22),
+        f24 = love.graphics.newFont(24),
+        f36 = love.graphics.newFont(36),
+    }
+
     --=== 1. Cargar configuración por defecto (JSON) ===
     local configPath = "maze_config.json"
     local configData = love.filesystem.read(configPath) or ""
@@ -756,7 +767,7 @@ end
 
 local function drawUI()
     love.graphics.setColor(1,1,1)
-    love.graphics.setFont(love.graphics.newFont(18))
+    love.graphics.setFont(fonts.f18)
     love.graphics.print("\226\156\165 x "..lives, 20, 30)
     local d = math.sqrt((player.x - criker.x)^2 + (player.y - criker.y)^2)
     if d < 220 then
@@ -771,7 +782,7 @@ local function drawUI()
     if Items.has(player, "brujula") and maze.exitCell then
         local ed = math.floor(math.sqrt((player.x - maze.exitCell.x*maze.tile)^2 + (player.y - maze.exitCell.y*maze.tile)^2))
         love.graphics.setColor(0.3,0.3,1)
-        love.graphics.setFont(love.graphics.newFont(14))
+        love.graphics.setFont(fonts.f14)
         love.graphics.print("Salida: "..ed.."px", 20, 55)
     end
     -- Weapon durability (left side)
@@ -779,7 +790,7 @@ local function drawUI()
     if weapon then
         local wy = Items.has(player, "brujula") and 75 or 55
         love.graphics.setColor(1,1,1)
-        love.graphics.setFont(love.graphics.newFont(14))
+        love.graphics.setFont(fonts.f14)
         love.graphics.print(Items.defs[weapon.id].nombre.." ["..weapon.uses.."/"..weapon.maxUses.."]", 20, wy)
     end
 end
@@ -907,14 +918,14 @@ local function drawEditor()
 
     -- Top info
     love.graphics.setColor(1,1,1)
-    love.graphics.setFont(love.graphics.newFont(16))
+    love.graphics.setFont(fonts.f16)
     love.graphics.print(editor.name .. " (" .. editor.width .. "x" .. editor.height .. ")", 20, 20)
 
     -- Brush indicator
     love.graphics.print("Brocha: " .. (brushNames[editor.brush] or "?"), sw - 200, 20)
 
     -- Template navigation
-    love.graphics.setFont(love.graphics.newFont(12))
+    love.graphics.setFont(fonts.f12)
     love.graphics.print("Sala " .. editor.currentIdx .. " de " .. #currentTemplates, sw - 200, 40)
 
     -- Controls help
@@ -964,7 +975,7 @@ function love.draw()
         local invCount = 0
         for _ in pairs(player.inventory) do invCount = invCount + 1 end
         local invY = sh - 16 * math.max(1, invCount) - 10
-        love.graphics.setFont(love.graphics.newFont(12))
+        love.graphics.setFont(fonts.f12)
         for id, data in pairs(player.inventory) do
             local def = Items.defs[id]
             if def then
@@ -994,7 +1005,7 @@ function love.draw()
         love.graphics.rectangle("fill", 0, 0, sw, sh)
 
         love.graphics.setColor(1, 1, 1)
-        love.graphics.setFont(love.graphics.newFont(22))
+        love.graphics.setFont(fonts.f22)
         love.graphics.printf("¡Inventario lleno! Elige qué reemplazar", 0, sh/2 - 120, sw, "center")
 
         local slots = getInventorySlots(player)
@@ -1011,12 +1022,12 @@ function love.draw()
             love.graphics.setColor(1, 1, 1)
             love.graphics.rectangle("line", x, y, 80, 80)
 
-            love.graphics.setFont(love.graphics.newFont(18))
+            love.graphics.setFont(fonts.f18)
             love.graphics.setColor(1, 0.5, 0)
             love.graphics.printf("["..i.."]", x, y - 25, 80, "center")
 
             love.graphics.setColor(1, 1, 1)
-            love.graphics.setFont(love.graphics.newFont(14))
+            love.graphics.setFont(fonts.f14)
             local txt = def.nombre
             if type(slot.data) == "table" and slot.data.uses then
                 txt = txt .. " ["..slot.data.uses.."/"..def.maxUses.."]"
@@ -1025,7 +1036,7 @@ function love.draw()
         end
 
         love.graphics.setColor(0.8, 0.8, 0.8)
-        love.graphics.setFont(love.graphics.newFont(14))
+        love.graphics.setFont(fonts.f14)
         love.graphics.printf("Presiona 1, 2 o 3 para soltar ese objeto (Esc = descartar el nuevo)", 0, sh/2 + 130, sw, "center")
     end
 
@@ -1035,7 +1046,7 @@ function love.draw()
         love.graphics.setColor(0,0,0,0.6)
         love.graphics.rectangle("fill", 10, 10, 350, (#ui.params+4)*18)
         love.graphics.setColor(1,1,1)
-        love.graphics.setFont(love.graphics.newFont(14))
+        love.graphics.setFont(fonts.f14)
         love.graphics.print("Seed: "..tostring(currentSeed), 20, 20)
         for i, p in ipairs(ui.params) do
             -- Construir el texto de la línea
@@ -1082,11 +1093,11 @@ function love.draw()
     -- Game over / Win states
     if state == "dead" then
         love.graphics.setColor(1,1,1)
-        love.graphics.setFont(love.graphics.newFont(36))
+        love.graphics.setFont(fonts.f36)
         love.graphics.print("GAME OVER", love.graphics.getWidth()/2 - 100, love.graphics.getHeight()/2)
     elseif state == "win" then
         love.graphics.setColor(1,1,0)
-        love.graphics.setFont(love.graphics.newFont(36))
+        love.graphics.setFont(fonts.f36)
         love.graphics.print("\194\161ESCAPASTE!", love.graphics.getWidth()/2 - 110, love.graphics.getHeight()/2)
     end
 end

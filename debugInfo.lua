@@ -21,7 +21,7 @@ function DebugInfo:draw(maze, player, criker, lives, camera)
         "Loops: " .. tostring(#maze.loops),
     }
     love.graphics.setColor(0,1,0)
-    love.graphics.setFont(love.graphics.newFont(12))
+    love.graphics.setFont(fonts.f12)
     local x = love.graphics.getWidth() - 150
     local y = 10
     for i, line in ipairs(lines) do
