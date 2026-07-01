@@ -229,6 +229,7 @@ function love.load()
 
     player = Player:new()
     player.inventory = {}
+    player.effects = {}
     criker = Criker:new()
     if maze.startRoom then
         player:setPos(maze.startRoom, maze)
@@ -313,6 +314,73 @@ local function saveUIConfig()
     local data = { chestOffsetX = chestOffsetX }
     local content = json.encode(data)
     love.filesystem.write(UI_CONFIG_PATH, content)
+end
+
+-- Resetea una partida completa conservando la configuracion actual.
+-- Usado por la tecla R y por el reinicio tras win/dead.
+local function resetGameState()
+    lights = {}
+    maze = Maze:new(configRef)
+    maze:generate()
+    player = Player:new()
+    player.inventory = {}
+    player.effects = {}
+    criker = Criker:new()
+    crikerSpawnTimer = 0
+    Vault:placeAll(maze)
+    player:setPos(maze.startRoom, maze)
+    if maze.exitCell then
+        addLight(maze.exitCell.x * maze.tile, maze.exitCell.y * maze.tile, 120, {1,0.9,0}, 2)
+    end
+    -- Centrar la camara sobre el jugador para evitar el slide inicial.
+    camera.x = player.x - love.graphics.getWidth() / 2
+    camera.y = player.y - love.graphics.getHeight() / 2
+    time = 0
+    lives = 3
+    state = "play"
+    pendingItem = nil
+    pendingTier = nil
+    waitingForDecision = false
+    uiState = nil
+end
+
+-- Construye el contexto que los consumibles necesitan para mutar el mundo.
+local function buildConsumableContext()
+    return {
+        -- Curacion
+        heal = function(amount)
+            lives = math.min(lives + amount, 3)
+        end,
+        healFull = function()
+            lives = 3
+        end,
+        -- Teletransporte a la sala segura
+        tpSafe = function()
+            if maze.safeRoom then
+                player.x = (maze.safeRoom.cx + 0.5) * maze.tile
+                player.y = (maze.safeRoom.cy + 0.5) * maze.tile
+            end
+        end,
+        -- Teletransporte a la salida
+        tpExit = function()
+            if maze.exitCell then
+                player.x = (maze.exitCell.x + 0.5) * maze.tile
+                player.y = (maze.exitCell.y + 0.5) * maze.tile
+            end
+        end,
+        -- Báculo de luz: deja una luz estática permanente en el tile del jugador
+        dropLight = function()
+            addLight(player.x, player.y, 90, {1, 1, 0.8}, 2)
+        end,
+        -- Tiza / Cinta / Lentes: marcan el tile actual
+        markTile = function(id)
+            local tx = math.floor(player.x / maze.tile)
+            local ty = math.floor(player.y / maze.tile)
+            markedTiles = markedTiles or {}
+            markedTiles[ty] = markedTiles[ty] or {}
+            markedTiles[ty][tx] = id or "marca"
+        end,
+    }
 end
 
 -- No shader switching: solo se usa el shader Falloff
@@ -458,10 +526,42 @@ function love.keypressed(key)
         local weapon = Items.getWeapon(player)
         if weapon and criker.active then
             local d = math.sqrt((player.x - criker.x)^2 + (player.y - criker.y)^2)
-            if d < 45 then
-                Items.useWeapon(player)
-                criker:stun(3)
+            -- Armas ranged (Honda, Arco de caza, Arco largo) atacan a distancia;
+            -- el resto es cuerpo a cuerpo.
+            local range = (weapon.range == "ranged") and 180 or 45
+            if d < range then
+                if weapon.range == "ranged" then
+                    -- a distancia solo aplica si hay linea de vision
+                    if maze:hasLineOfSight(player.x, player.y, criker.x, criker.y) then
+                        Items.useWeapon(player)
+                        criker:stun(weapon.stunDuration or 3)
+                    end
+                else
+                    Items.useWeapon(player)
+                    criker:stun(weapon.stunDuration or 3)
+                end
             end
+        end
+        return
+    end
+
+    -- Use consumable (tecla Q): usa el primer consumible del inventario.
+    if key == "q" and ChestAnim.state == "idle" and state == "play" then
+        -- Buscamos el primer consumible con usos disponibles.
+        local target = nil
+        for id, data in pairs(player.inventory) do
+            local def = Items.defs[id]
+            if def and def.type == "consumable" then
+                local uses = type(data) == "table" and data.uses or 1
+                if uses and uses > 0 then
+                    -- Preferimos curacion/TP si hace falta; si no, el primero.
+                    if target == nil then target = id end
+                end
+            end
+        end
+        if target then
+            local ctx = buildConsumableContext()
+            Items.useConsumable(player, target, ctx)
         end
         return
     end
@@ -542,18 +642,8 @@ function love.keypressed(key)
         end
         return
     elseif key == "r" then
-        -- Regenerar el laberinto con la configuración actual (código original)
-        lights = {}
-        maze = Maze:new(configRef)
-        maze:generate()
-        player = Player:new()
-        player.inventory = {}
-        criker = Criker:new()
-        Vault:placeAll(maze)
-        player:setPos(maze.startRoom, maze)
-        if maze.exitCell then
-            addLight(maze.exitCell.x * maze.tile, maze.exitCell.y * maze.tile, 120, {1,0.9,0}, 2)
-        end
+        -- Regenerar el laberinto con la configuración actual
+        resetGameState()
     elseif key == "escape" then
         ui.active = false
     end
@@ -611,6 +701,9 @@ function love.update(dt)
     if ChestAnim.state == "idle" then
         if state == "play" then
             time = time + dt
+            -- Tick de efectos temporales (luces, velocidad, sigilo, etc.)
+            Items.tickEffects(player, dt)
+
             if not criker.active then
                 crikerSpawnTimer = crikerSpawnTimer + dt
                 if crikerSpawnTimer >= 1.5 then
@@ -618,12 +711,24 @@ function love.update(dt)
                 end
             end
             local input = getInput()
+            -- Velocidad efectiva segun items/efectos
+            player.speed = 130 * Items.getSpeedMultiplier(player)
             player:update(input, maze, dt)
             if criker.active then criker:update(player, maze, dt) end
+
+            -- Colision con el Criker: escudos/amuleto/armadura absorben primero;
+            -- si no hay proteccion, se pierde una vida (salvo inmunidad temporal).
             if criker.active and math.sqrt((player.x - criker.x)^2 + (player.y - criker.y)^2) < 15 then
-                lives = lives - 1
-                criker:spawnValidated(maze)
-                if lives <= 0 then state = "dead" end
+                if Items.isImmune(player) then
+                    -- salamandra / cristales de inmunidad: sin efecto
+                elseif Items.absorbHit(player) then
+                    -- absorbido por escudo/amuleto/armadura, re-spawnea Criker
+                    criker:spawnValidated(maze)
+                else
+                    lives = lives - 1
+                    criker:spawnValidated(maze)
+                    if lives <= 0 then state = "dead" end
+                end
             end
             if maze:isExit(player.x, player.y) then state = "win" end
             camera.x = camera.x + (player.x - love.graphics.getWidth()/2 - camera.x) * 0.1
@@ -686,7 +791,7 @@ local function drawFlashlight()
 
     -- Flicker
     local flicker = math.sin(time*12)*8 + math.sin(time*23)*5 + (math.random()-0.5)*6
-    local baseRadius = Items.has(player, "antorch") and 280 or 200
+    local baseRadius = Items.getLightRadius(player, 200)
     local radius  = baseRadius + flicker
 
     -- Player screen position

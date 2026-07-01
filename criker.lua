@@ -2,6 +2,7 @@
 
 local Criker = {}
 local function rand(a,b) return love.math.random(a,b) end
+local Items = require "items"
 Criker.__index = Criker
 
 function Criker:new()
@@ -98,12 +99,46 @@ function Criker:update(player, maze, dt)
     local PATROL_SPEED = 35
     local SEARCH_TIME = 2.5
 
+    -- Modificadores por items del jugador:
+    -- * stealth (sigilo/vacio/salamandra): el Criker no detecta.
+    -- * camuflaje: reduce el radio de deteccion un 40%.
+    -- * hielo: ralentiza al Criker 20% cuando esta cerca.
+    local stealthed = Items.isStealthed(player)
+    if Items.has(player, "camuflaje") then DETECT_RADIUS = DETECT_RADIUS * 0.6 end
+    local slowFactor = 1.0
+    if Items.has(player, "hielo") and dist2(self.x, self.y, player.x, player.y) < 200 then
+        slowFactor = slowFactor * 0.8
+    end
+    if Items.hasEffect(player, "slowCriker") then slowFactor = slowFactor * 0.7 end
+    if Items.hasEffect(player, "slowCrikerStrong") then slowFactor = slowFactor * 0.2 end
+    CHASE_SPEED  = CHASE_SPEED  * slowFactor
+    SEARCH_SPEED = SEARCH_SPEED * slowFactor
+    PATROL_SPEED = PATROL_SPEED * slowFactor
+
+    -- Efecto lure (piedra ruidosa / señuelo): el Criker va hacia el jugador
+    -- ignorando deteccion. Efecto flee (espantapájaros): huye del jugador.
+    local lured  = Items.hasEffect(player, "lureCriker")
+    local fled   = Items.hasEffect(player, "fleeCriker")
+
     local dx = player.x - self.x
     local dy = player.y - self.y
     local d = math.sqrt(dx*dx + dy*dy)
     local canSee = false
-    if d < DETECT_RADIUS then
-        canSee = maze:hasLineOfSight(self.x, self.y, player.x, player.y)
+    if not stealthed and (d < DETECT_RADIUS or lured) then
+        if lured then
+            canSee = true
+        else
+            canSee = maze:hasLineOfSight(self.x, self.y, player.x, player.y)
+        end
+    end
+
+    -- Daño por fuego (poción de fuego): el Criker queda "aturdido" 2s.
+    if Items.hasEffect(player, "burnCriker") and self.stunTimer <= 0 then
+        self:stun(2)
+    end
+    -- Trampa de pinchos / cofre falso: aturden al Criker si esta muy cerca.
+    if Items.hasEffect(player, "trapStun") and d < 40 and self.stunTimer <= 0 then
+        self:stun(Items.hasEffect(player, "trapStun") and 2 or 6)
     end
 
     if maze:isSafe(self.x, self.y) then
@@ -151,8 +186,10 @@ function Criker:update(player, maze, dt)
             local spd = d < 120 and 110 or CHASE_SPEED
             local dirDist = dist2(self.targetX, self.targetY, self.x, self.y)
             if dirDist > 0 then
-                local nx = self.x + (self.targetX - self.x) / dirDist * spd * dt
-                local ny = self.y + (self.targetY - self.y) / dirDist * spd * dt
+                -- Efecto flee (espantapájaros): invierte la dirección de persecución.
+                local dir = fled and -1 or 1
+                local nx = self.x + (self.targetX - self.x) / dirDist * spd * dt * dir
+                local ny = self.y + (self.targetY - self.y) / dirDist * spd * dt * dir
                 if not maze:isWall(nx, self.y) then self.x = nx end
                 if not maze:isWall(self.x, ny) then self.y = ny end
             end
