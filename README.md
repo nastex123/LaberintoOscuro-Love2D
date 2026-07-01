@@ -1,4 +1,4 @@
-/# Luz en la Oscuridad — Exploración
+# Luz en la Oscuridad — Exploración
 
 Juego de exploración en laberintos generados proceduralmente hecho con Love2D.
 
@@ -135,6 +135,15 @@ Espada, Arco largo (ranged), Amuleto de protección (absorbe 2), Esencia de la a
   - `G` Cofre legendario
   - `?` Cofre aleatorio
 - Guardar con **S** (sobrescribe `room_templates.lua`).
+
+---
+
+## Conectividad del laberinto
+
+- Tras la generación, `ensureConnectivity()` ejecuta un flood fill desde la sala inicial.
+- Si alguna sala, salida o cofre queda aislado, se cava automáticamente un pasillo de emergencia hasta la zona conectada más cercana.
+- El proceso se repite hasta 6 intentos para garantizar que todo sea accesible.
+- También se aplica tras colocar cofres en `vault.lua`.
 
 ---
 
