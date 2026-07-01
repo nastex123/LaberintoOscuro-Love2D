@@ -112,8 +112,12 @@ function Criker:update(player, maze, dt)
         local sy = (maze.safeRoom.cy + 0.5) * maze.tile
         local sd = dist2(self.x, self.y, sx, sy)
         if sd > 0 then
-            self.x = self.x + (self.x - sx) / sd * 2
-            self.y = self.y + (self.y - sy) / sd * 2
+            -- Se empuja al Criker fuera del centro de la safe room eje a eje,
+            -- respetando muros para no meterlo dentro de una pared.
+            local pushX = (self.x - sx) / sd * 2
+            local pushY = (self.y - sy) / sd * 2
+            if not maze:isWall(self.x + pushX, self.y) then self.x = self.x + pushX end
+            if not maze:isWall(self.x, self.y + pushY) then self.y = self.y + pushY end
         end
         return
     end
@@ -147,8 +151,10 @@ function Criker:update(player, maze, dt)
             local spd = d < 120 and 110 or CHASE_SPEED
             local dirDist = dist2(self.targetX, self.targetY, self.x, self.y)
             if dirDist > 0 then
-                self.x = self.x + (self.targetX - self.x) / dirDist * spd * dt
-                self.y = self.y + (self.targetY - self.y) / dirDist * spd * dt
+                local nx = self.x + (self.targetX - self.x) / dirDist * spd * dt
+                local ny = self.y + (self.targetY - self.y) / dirDist * spd * dt
+                if not maze:isWall(nx, self.y) then self.x = nx end
+                if not maze:isWall(self.x, ny) then self.y = ny end
             end
         end
     elseif self.state == "search" then
@@ -164,8 +170,10 @@ function Criker:update(player, maze, dt)
             local dToTarget = dist2(self.targetX, self.targetY, self.x, self.y)
             if dToTarget > 10 then
                 if dToTarget > 0 then
-                    self.x = self.x + (self.targetX - self.x) / dToTarget * SEARCH_SPEED * dt
-                    self.y = self.y + (self.targetY - self.y) / dToTarget * SEARCH_SPEED * dt
+                    local nx = self.x + (self.targetX - self.x) / dToTarget * SEARCH_SPEED * dt
+                    local ny = self.y + (self.targetY - self.y) / dToTarget * SEARCH_SPEED * dt
+                    if not maze:isWall(nx, self.y) then self.x = nx end
+                    if not maze:isWall(self.x, ny) then self.y = ny end
                 end
             else
                 self.patrolDir = {x = 0, y = 0}
