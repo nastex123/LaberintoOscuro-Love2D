@@ -49,6 +49,9 @@ function Player:setPos(room, maze)
 end
 
 function Player:update(input, maze, dt)
+    -- Normalizar input diagonal para evitar velocidad √2
+    local len = math.sqrt(input.x^2 + input.y^2)
+    if len > 1 then input.x = input.x / len; input.y = input.y / len end
     local nx = self.x + input.x * self.speed * dt
     local ny = self.y + input.y * self.speed * dt
     local moved = false

@@ -420,6 +420,12 @@ function love.keypressed(key)
         return
     end
 
+    -- Reinicio tras ganar o morir
+    if (state == "dead" or state == "win") and (key == "r" or key == "return") then
+        resetGameState()
+        return
+    end
+
     -- Editor toggle
     if key == "f2" then
         editor.active = not editor.active
@@ -642,7 +648,7 @@ function love.keypressed(key)
             tier = "legendary"
         end
         
-        if tier and ChestAnim.state == "idle" then
+        if tier and ChestAnim.state == "idle" and state == "play" then
             local itemId = Items.randomFromTier(tier)
             if itemId then
                 pendingItem = itemId
@@ -747,8 +753,8 @@ function love.update(dt)
         end
     end
 
-    -- Lógica post-animación (siempre se ejecuta, incluso con animación activa)
-    if pendingItem and not waitingForDecision then
+    -- Lógica post-animación (solo durante gameplay)
+    if pendingItem and not waitingForDecision and state == "play" then
         if ChestAnim.state == "done" then
             local count = 0
             for _ in pairs(player.inventory) do count = count + 1 end
@@ -770,7 +776,7 @@ local function drawUI()
     love.graphics.setFont(fonts.f18)
     love.graphics.print("\226\156\165 x "..lives, 20, 30)
     local d = math.sqrt((player.x - criker.x)^2 + (player.y - criker.y)^2)
-    if d < 220 then
+    if criker.active and d < 220 then
         local a = 1 - (d / 220)
         love.graphics.setColor(1,0,0, a*0.5)
         love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), 12)
@@ -968,27 +974,25 @@ function love.draw()
     drawUI()
     Debug:draw(maze, player, criker, lives, camera)
 
-    -- Inventory HUD (bottom-right)
+    -- Inventory HUD (bottom-right, orden determinístico)
     do
         local sw, sh = love.graphics.getDimensions()
         local invX = sw - 155
-        local invCount = 0
-        for _ in pairs(player.inventory) do invCount = invCount + 1 end
-        local invY = sh - 16 * math.max(1, invCount) - 10
+        local slots = getInventorySlots(player)
+        local invY = sh - 16 * math.max(1, #slots) - 10
         love.graphics.setFont(fonts.f12)
-        for id, data in pairs(player.inventory) do
-            local def = Items.defs[id]
-            if def then
-                local txt = def.nombre
-                if type(data) == "table" and data.uses then
-                    txt = txt .. " ["..data.uses.."/"..def.maxUses.."]"
-                end
-                love.graphics.setColor(def.color)
-                love.graphics.rectangle("fill", invX, invY, 12, 12)
-                love.graphics.setColor(1,1,1)
-                love.graphics.print(txt, invX + 15, invY - 2)
-                invY = invY + 16
+        for _, slot in ipairs(slots) do
+            local def = slot.def
+            local data = slot.data
+            local txt = def.nombre
+            if type(data) == "table" and data.uses then
+                txt = txt .. " ["..data.uses.."/"..def.maxUses.."]"
             end
+            love.graphics.setColor(def.color)
+            love.graphics.rectangle("fill", invX, invY, 12, 12)
+            love.graphics.setColor(1,1,1)
+            love.graphics.print(txt, invX + 15, invY - 2)
+            invY = invY + 16
         end
     end
 
