@@ -8,11 +8,6 @@ local Items  = require "items"
 local Vault  = require "vault"
 local ChestAnim = require "chest_animation"
 
-local TILE_SIZE = 28
-local MAZE_COLS = 140
-local MAZE_ROWS = 140
-
--- globals will be created in love.load
 local lives = 3
 local state = "play" -- "play", "win", "dead"
 local time = 0
@@ -290,7 +285,7 @@ function love.load()
 
     --=== 6. Luz estática de salida (amarilla) ===
     if maze.exitCell then
-        addLight(maze.exitCell.x * TILE_SIZE, maze.exitCell.y * TILE_SIZE,
+        addLight(maze.exitCell.x * maze.tile, maze.exitCell.y * maze.tile,
                  120, {1,0.9,0}, 2)  -- amarillo
     end
 end
@@ -557,7 +552,7 @@ function love.keypressed(key)
         Vault:placeAll(maze)
         player:setPos(maze.startRoom, maze)
         if maze.exitCell then
-            addLight(maze.exitCell.x * TILE_SIZE, maze.exitCell.y * TILE_SIZE, 120, {1,0.9,0}, 2)
+            addLight(maze.exitCell.x * maze.tile, maze.exitCell.y * maze.tile, 120, {1,0.9,0}, 2)
         end
     elseif key == "escape" then
         ui.active = false
