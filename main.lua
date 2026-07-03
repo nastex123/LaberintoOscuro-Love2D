@@ -7,6 +7,7 @@ local Debug  = require "debugInfo"
 local Items  = require "items"
 local Vault  = require "vault"
 local ChestAnim = require "chest_animation"
+local TouchUI = require "touch_ui"
 
 local lives = 3
 local state = "play" -- "play", "win", "dead"
@@ -145,6 +146,11 @@ function love.load()
         f24 = love.graphics.newFont(24),
         f36 = love.graphics.newFont(36),
     }
+
+    -- Detectar plataforma móvil
+    isMobile = (love.system.getOS() == "Android" or love.system.getOS() == "iOS")
+    touchUI = TouchUI.new()
+    if isMobile then touchUI:layout() end
 
     --=== 1. Cargar configuración por defecto (JSON) ===
     local configPath = "maze_config.json"
@@ -306,13 +312,39 @@ function love.load()
     end
 end
 
--- Input handling – keyboard only
+-- Resize: recrear canvases cuando cambia el tamaño de ventana
+function love.resize(w, h)
+    sceneCanvas = love.graphics.newCanvas(w, h)
+    lightCanvas = love.graphics.newCanvas(w, h)
+    if isMobile then touchUI:layout() end
+end
+
+-- Touch callbacks (mobile)
+function love.touchpressed(id, x, y, dx, dy, pressure)
+    if isMobile then touchUI:touchPressed(id, x, y) end
+end
+
+function love.touchmoved(id, x, y, dx, dy, pressure)
+    if isMobile then touchUI:touchMoved(id, x, y) end
+end
+
+function love.touchreleased(id, x, y, dx, dy, pressure)
+    if isMobile then touchUI:touchReleased(id) end
+end
+
+-- Input handling – keyboard + touch
 local function getInput()
     local x, y = 0, 0
+    -- Keyboard
     if love.keyboard.isDown("left", "a") then x = -1 end
     if love.keyboard.isDown("right", "d") then x = 1 end
     if love.keyboard.isDown("up", "w") then y = -1 end
     if love.keyboard.isDown("down", "s") then y = 1 end
+    -- Touch joystick (merge: touch overrides keyboard if active)
+    if isMobile and touchUI and touchUI.joystick.active then
+        x = touchUI.joystick.dx
+        y = touchUI.joystick.dy
+    end
     return {x = x, y = y}
 end
 
@@ -773,6 +805,92 @@ function love.update(dt)
             end
         end
     end
+
+    -- Touch action buttons (mobile)
+    if isMobile and touchUI then
+        -- Reinicio tras win/dead
+        if (state == "dead" or state == "win") and touchUI:wasPressed("restart") then
+            resetGameState()
+        end
+        -- Cerrar animación de cofre
+        if touchUI:wasPressed("interact") and ChestAnim.state == "done" then
+            ChestAnim:close()
+        end
+        -- Abrir cofre
+        if touchUI:wasPressed("interact") and ChestAnim.state == "idle" and state == "play" then
+            local vault, tx, ty = Vault:playerOnVault(player, maze)
+            if vault then
+                local itemId, tier = Vault:openVault(maze, tx, ty)
+                if itemId then
+                    pendingItem = itemId
+                    pendingTier = tier
+                    waitingForDecision = false
+                    ChestAnim:start(tier, itemId, chestOffsetX)
+                end
+            end
+        end
+        -- Atacar
+        if touchUI:wasPressed("attack") and ChestAnim.state == "idle" and state == "play" then
+            local weapon = Items.getWeapon(player)
+            if weapon and criker.active then
+                local d = math.sqrt((player.x - criker.x)^2 + (player.y - criker.y)^2)
+                local range = (weapon.range == "ranged") and 180 or 45
+                if d < range then
+                    if weapon.range == "ranged" then
+                        if maze:hasLineOfSight(player.x, player.y, criker.x, criker.y) then
+                            Items.useWeapon(player)
+                            criker:stun(weapon.stunDuration or 3)
+                        end
+                    else
+                        Items.useWeapon(player)
+                        criker:stun(weapon.stunDuration or 3)
+                    end
+                end
+            end
+        end
+        -- Usar consumible
+        if touchUI:wasPressed("use") and ChestAnim.state == "idle" and state == "play" then
+            local target = nil
+            for id, data in pairs(player.inventory) do
+                local def = Items.defs[id]
+                if def and def.type == "consumable" then
+                    local uses = type(data) == "table" and data.uses or 1
+                    if uses and uses > 0 then
+                        if target == nil then target = id end
+                    end
+                end
+            end
+            if target then
+                local ctx = buildConsumableContext()
+                Items.useConsumable(player, target, ctx)
+            end
+        end
+        -- Debug toggle (F1)
+        if touchUI:wasPressed("debug") then
+            ui.active = not ui.active
+        end
+        -- Editor toggle (F2)
+        if touchUI:wasPressed("editor") then
+            editor.active = not editor.active
+            if editor.active then initEditor() end
+        end
+        -- Inventory slot taps (reemplazo de ítems)
+        if waitingForDecision and uiState == "inventory_prompt" then
+            local tapIdx = touchUI:consumeSlotTap()
+            if tapIdx then
+                local slots = getInventorySlots(player)
+                if slots[tapIdx] then
+                    player.inventory[slots[tapIdx].id] = nil
+                    Items.give(player, pendingItem)
+                    pendingItem = nil
+                    pendingTier = nil
+                    waitingForDecision = false
+                    uiState = nil
+                    touchUI:resetSlots()
+                end
+            end
+        end
+    end
 end
 
 local function drawUI()
@@ -1107,5 +1225,10 @@ function love.draw()
         love.graphics.setColor(1,1,0)
         love.graphics.setFont(fonts.f36)
         love.graphics.print("\194\161ESCAPASTE!", love.graphics.getWidth()/2 - 110, love.graphics.getHeight()/2)
+    end
+
+    -- Touch UI overlay (mobile only)
+    if isMobile and touchUI then
+        touchUI:draw(fonts, state)
     end
 end
