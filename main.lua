@@ -223,14 +223,12 @@ function love.load()
             maze:buildBranches()
             maze:buildLoops()
             maze:degradeEdges()
-            maze:fillGrid()
         elseif step == "lights" then
             maze:createRooms()
             maze:buildSpine()
             maze:buildBranches()
             maze:buildLoops()
             maze:degradeEdges()
-            maze:fillGrid()
         else
             maze:generate()
         end
