@@ -96,8 +96,20 @@ function Maze:createRooms()
         end
         local placed = false
         for attempt = 1, 15 do
-            local x = rand(margin, self.cols - margin - w - 1)
-            local y = rand(margin, self.rows - margin - h - 1)
+            local maxX = self.cols - margin - w - 1
+            local maxY = self.rows - margin - h - 1
+            if maxX < margin or maxY < margin then
+                w = math.min(w, self.cols - 2*margin - 1)
+                h = math.min(h, self.rows - 2*margin - 1)
+                maxX = self.cols - margin - w - 1
+                maxY = self.rows - margin - h - 1
+                if maxX < margin or maxY < margin then
+                    -- Tamaño mínimo imposible para este tipo; abandonar intento
+                    break
+                end
+            end
+            local x = rand(margin, maxX)
+            local y = rand(margin, maxY)
             local overlap = false
             for _, r in ipairs(self.rooms) do
                 if x < r.x + r.w + 3 and x + w + 3 > r.x and y < r.y + r.h + 3 and y + h + 3 > r.y then
@@ -138,6 +150,7 @@ function Maze:createRooms()
 end
 
 function Maze:buildSpine()
+    if #self.rooms == 0 then return end
     local ordered = {self.startRoom}
     local remaining = {}
     for _, r in ipairs(self.rooms) do
@@ -179,6 +192,7 @@ function Maze:contains(arr, val)
 end
 
 function Maze:buildBranches()
+    if #self.rooms == 0 then return end
     local branchCount = rand(self.branchCount[1], self.branchCount[2])
     for b = 1, branchCount do
         local startRoom = self.rooms[rand(1, #self.rooms)]
