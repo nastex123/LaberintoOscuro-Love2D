@@ -127,3 +127,6 @@ P11 → P20 → P21 → P25 → P27 → P28 → P29 → P31 → P32 → P35 → 
 | P1 | rand() rango invertido en mazes pequenos | `663e934` |
 | P2 | rand(1,0) cuando rooms vacio | `663e934` |
 | P3 | maze:fillGrid() inexistente | `663e934` |
+| P4 | CLI args mapean a claves equivocadas | `64a2769` |
+| P5 | tierColors ingles vs espanol en flash | `64a2769` |
+| P10 | io.open vs love.filesystem.write | `64a2769` |
