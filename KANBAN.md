@@ -124,3 +124,6 @@ P11 → P20 → P21 → P25 → P27 → P28 → P29 → P31 → P32 → P35 → 
 | G3 | Sistema de efectos + Q + rango/stun | `cee6812` |
 | G4 | Font cache (newFont por frame) | `78982fb` |
 | G5 | Reinicio, diagonal, HUD sort, guards | `2fbfbfd` |
+| P1 | rand() rango invertido en mazes pequenos | `663e934` |
+| P2 | rand(1,0) cuando rooms vacio | `663e934` |
+| P3 | maze:fillGrid() inexistente | `663e934` |
