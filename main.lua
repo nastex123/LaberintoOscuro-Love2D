@@ -106,10 +106,8 @@ local function saveEditorData()
     lines[#lines+1] = "}"
     lines[#lines+1] = "return templates"
     local content = table.concat(lines, "\n")
-    local f, err = io.open("room_templates.lua", "w")
-    if f then
-        f:write(content)
-        f:close()
+    local ok, err = love.filesystem.write("room_templates.lua", content)
+    if ok then
         print("Templates guardados (room_templates.lua)")
     else
         print("Error al guardar:", err)
@@ -169,13 +167,21 @@ function love.load()
     local function applyArg(key, value)
         if key == "cols" or key == "rows" or key == "tile" then
             config[key] = tonumber(value)
-        elseif key == "rooms" or key == "branches" or key == "branchlen" then
+        elseif key == "rooms" then
             local a,b = value:match("(%d+)%-(%d+)")
-            if a and b then config[key] = {tonumber(a), tonumber(b)} end
-        elseif key == "loopchance" or key == "perlin" then
-            config[key] = tonumber(value)
+            if a and b then config.roomCount = {tonumber(a), tonumber(b)} end
+        elseif key == "branches" then
+            local a,b = value:match("(%d+)%-(%d+)")
+            if a and b then config.branchCount = {tonumber(a), tonumber(b)} end
+        elseif key == "branchlen" then
+            local a,b = value:match("(%d+)%-(%d+)")
+            if a and b then config.branchLen = {tonumber(a), tonumber(b)} end
+        elseif key == "loopchance" then
+            config.loopChance = tonumber(value)
+        elseif key == "perlin" then
+            config.perlinThresh = tonumber(value)
         elseif key == "seed" then
-            config[key] = tonumber(value)
+            config.seed = tonumber(value)
         elseif key == "debugstep" then
             config.debugStep = value
         end
