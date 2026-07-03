@@ -42,6 +42,7 @@ function ChestAnim:start(tier, forcedItemId, offsetX)
     self.scrollPos = 0
     self.speed = 3000
     self.state = "spinning"
+    self.tierKey = tier
     self.tierName = ({ common="Común", epic="Épico", legendary="Legendario", random="Aleatorio" })[tier] or tier
 
     local sw, sh = love.graphics.getDimensions()
@@ -109,7 +110,7 @@ function ChestAnim:update(dt)
             self:spawnConfetti()
 
             local tierColors = { common={0.6,0.6,0.6}, epic={0.6,0.3,0.8}, legendary={1,0.6,0}, random={1,1,1} }
-            self.flashColor = tierColors[self.tierName] or {1,1,1}
+            self.flashColor = tierColors[self.tierKey] or {1,1,1}
             self.flashAlpha = 0.8
         else
             local t = easeOutCubic(self.stopProgress)
