@@ -2,6 +2,7 @@
 
 local Perlin = require "perlin"
 local roomTemplates = require "room_templates"
+local Tiles = require "tiles"
 
 local Maze = {}
 Maze.__index = Maze
@@ -65,36 +66,35 @@ function Maze:generate()
 end
 
 function Maze:createRooms()
-    local names = {A="Vacia", B="Pilares", C="MiniLab", D="Pozo", E="Safe", F="Relicario", G="Boveda", H="Condenados"}
-    local count = rand(self.roomCount[1], self.roomCount[2])
-    local margin = 6
-    for i = 0, count - 1 do
-        local w, h, type
-        local templateRoom = nil
-        if i == 0 then
-            type = 'E'
-        elseif i == 1 then
-            type = ({'F','G','H'})[rand(1,3)]
-        else
-            if #roomTemplates > 0 and love.math.random() < 0.4 then
-                templateRoom = roomTemplates[rand(1, #roomTemplates)]
-                w = #templateRoom.grid[1]
-                h = #templateRoom.grid
-                type = 'Z'
-            else
-                type = ({'A','A','B','B','C','D'})[rand(1,6)]
-            end
-        end
-        if type == 'A' then w, h = rand(5,8), rand(5,8)
-        elseif type == 'B' then w, h = rand(6,9), rand(6,9)
-        elseif type == 'C' then w, h = 7, 7
-        elseif type == 'D' then w, h = rand(5,7), rand(5,7)
-        elseif type == 'E' then w, h = rand(4,6), rand(5,7)
-        elseif type == 'F' then w, h = 4, 4
-        elseif type == 'G' then w, h = 6, 6
-        elseif type == 'H' then w, h = 5, 5
-        end
+    -- Usar TODAS las plantillas de room_templates.lua exactamente una vez
+    -- Sin generación procedural A-H
+    if not roomTemplates or #roomTemplates ==    0 then
+        -- Fallback: crear al menos una sala vacía si no hay plantillas
+        local w, h = 7, 7
+        local x, y = math.floor(self.cols/2) - w/2, math.floor(self.rows/2) - h/2
+        local room = {x = x, y = y, w = w, h = h, cx = x + math.floor(w/2), cy = y + math.floor(h/2), type = 'empty', name = "Vacía"}
+        table.insert(self.rooms, room)
+        return
+    end
+
+    -- Copiar y mezclar plantillas para usar cada una una vez
+    local templates = {}
+    for _, t in ipairs(roomTemplates) do
+        table.insert(templates, t)
+    end
+    -- Fisher-Yates shuffle
+    for i = #templates, 2, -1 do
+        local j = love.math.random(1, i)
+        templates[i], templates[j] = templates[j], templates[i]
+    end
+
+    -- Intentar colocar cada plantilla
+    for _, tmpl in ipairs(templates) do
+        local w = #tmpl.grid[1]
+        local h = #tmpl.grid
         local placed = false
+        local margin = 6
+
         for attempt = 1, 15 do
             local maxX = self.cols - margin - w - 1
             local maxY = self.rows - margin - h - 1
@@ -104,12 +104,11 @@ function Maze:createRooms()
                 maxX = self.cols - margin - w - 1
                 maxY = self.rows - margin - h - 1
                 if maxX < margin or maxY < margin then
-                    -- Tamaño mínimo imposible para este tipo; abandonar intento
                     break
                 end
             end
-            local x = rand(margin, maxX)
-            local y = rand(margin, maxY)
+            local x = love.math.random(margin, maxX)
+            local y = love.math.random(margin, maxY)
             local overlap = false
             for _, r in ipairs(self.rooms) do
                 if x < r.x + r.w + 3 and x + w + 3 > r.x and y < r.y + r.h + 3 and y + h + 3 > r.y then
@@ -118,31 +117,30 @@ function Maze:createRooms()
                 end
             end
             if not overlap then
-                local room = {x = x, y = y, w = w, h = h, cx = math.floor(x + w / 2), cy = math.floor(y + h / 2), type = type, name = (templateRoom and templateRoom.name) or names[type]}
-                if templateRoom then room.template = templateRoom end
+                local room = {x = x, y = y, w = w, h = h, cx = math.floor(x + w / 2), cy = math.floor(y + h / 2), type = 'template', name = tmpl.name, template = tmpl}
                 table.insert(self.rooms, room)
-                if type == 'E' then self.safeRoom = room end
-                if type == 'F' or type == 'G' or type == 'H' then self.treasureRoom = room end
+                -- safeRoom y treasureRoom se detectan en carveTemplate via 'L' y 'X'
                 placed = true
                 break
             end
         end
-        if not placed then break end
+        if not placed then
+            -- No se pudo colocar esta plantilla
+        end
     end
+
     -- Determine start and exit rooms
     local candidates = {}
     for _, r in ipairs(self.rooms) do
-        if r.type ~= 'E' and not (r.type == 'F' or r.type == 'G' or r.type == 'H') then
-            table.insert(candidates, r)
-        end
+        table.insert(candidates, r)
     end
     if #candidates >= 2 then
-        self.startRoom = candidates[rand(1, #candidates)]
+        self.startRoom = candidates[love.math.random(1, #candidates)]
         local exitCandidates = {}
         for _, r in ipairs(candidates) do
             if r ~= self.startRoom then table.insert(exitCandidates, r) end
         end
-        self.exitRoom = exitCandidates[rand(1, #exitCandidates)]
+        self.exitRoom = exitCandidates[love.math.random(1, #exitCandidates)]
     else
         self.startRoom = self.rooms[1]
         self.exitRoom = self.rooms[#self.rooms]
@@ -460,9 +458,8 @@ function Maze:carveTemplate(r)
                 local gx = r.x + tx - 1
                 local gy = r.y + ty - 1
                 if gy > 0 and gx > 0 and gy < self.rows-1 and gx < self.cols-1 then
-                    if ch == '#' or ch == 'P' then
-                        self.grid[gy][gx] = 1
-                    elseif ch == 'L' then
+                    -- Casos especiales con side-effects
+                    if ch == 'L' then
                         self.grid[gy][gx] = 3
                         foundL = true
                     elseif ch == 'X' then
@@ -470,16 +467,13 @@ function Maze:carveTemplate(r)
                         if not self.exitCell then
                             self.exitCell = {x = gx, y = gy}
                         end
-                    elseif ch == 'R' then
-                        self.grid[gy][gx] = 5
-                    elseif ch == 'C' then
-                        self.grid[gy][gx] = 4
-                    elseif ch == 'G' then
-                        self.grid[gy][gx] = 6
-                    elseif ch == '?' then
-                        self.grid[gy][gx] = 7
+                    elseif ch == 'P' then
+                        -- alias de pared
+                        self.grid[gy][gx] = 1
                     else
-                        self.grid[gy][gx] = 0
+                        -- Lookup general desde tiles.lua
+                        local id = Tiles.charToId[ch]
+                        self.grid[gy][gx] = id or 0
                     end
                     self.gridType[gy][gx] = "room"
                 end
@@ -632,6 +626,13 @@ function Maze:ensureConnectivity(extraPoints)
     end
 end
 
+function Maze:getTileAt(px, py)
+    local tx = math.floor(px / self.tile)
+    local ty = math.floor(py / self.tile)
+    if tx < 0 or ty < 0 or tx >= self.cols or ty >= self.rows then return nil end
+    return self.grid[ty][tx]
+end
+
 function Maze:getLocationInfo(px, py)
     local tx = math.floor(px / self.tile)
     local ty = math.floor(py / self.tile)
@@ -687,8 +688,19 @@ function Maze:hasLineOfSight(x0, y0, x1, y1)
     end
 end
 
-function Maze:draw(camera)
+function Maze:draw(camera, waterMaskCanvas)
     local t = self.tile
+    -- Water shader uniforms once per frame
+    if waterShader then
+        waterShader:send("u_time", love.timer.getTime())
+        waterShader:send("u_resolution", {love.graphics.getDimensions()})
+        waterShader:send("u_camera", {camera.x, camera.y})
+        waterShader:send("u_pixelCount", waterPixelCount)
+        waterShader:send("u_waterSpeed", waterSpeed)
+        waterShader:send("u_distortion", waterDistortion)
+        waterShader:send("u_waterScale", waterScale)
+    end
+    local usingWater = false
     for y = 0, self.rows - 1 do
         for x = 0, self.cols - 1 do
             local px = x * t - camera.x
@@ -696,21 +708,43 @@ function Maze:draw(camera)
             if px < -t or py < -t or px > love.graphics.getWidth() or py > love.graphics.getHeight() then
                 -- skip off‑screen tiles
             else
-                local col
                 local val = self.grid[y][x]
-                if val == 1 then col = {0.176,0.176,0.227}          -- #2d2d3a wall
-                elseif val == 2 then col = {1,0.867,0}                -- #ffdd00 exit
-                elseif val == 3 then col = {0.267,0.533,0.667}        -- #4488aa safe light
-                elseif val == 4 then col = {0.533,0.4,0.267}          -- #886644 common vault
-                elseif val == 5 then col = {0.533,0.267,0.667}        -- #8844aa epic vault
-                elseif val == 6 then col = {0.867,0.667,0}            -- #ddaa00 legendary vault
-                elseif val == 7 then col = {0.4,0.8,1}                -- #66ccff random vault
-                else col = {0.039,0.039,0.039}                       -- #0a0a0a floor
+                local def = Tiles.defs[val]
+                if waterShader and def and def.id == Tiles.WATER then
+                    -- Water tile rendered with shader
+                    if not usingWater then
+                        love.graphics.setShader(waterShader)
+                        usingWater = true
+                    end
+                    love.graphics.setColor(1, 1, 1)
+                    love.graphics.rectangle("fill", px, py, t, t)
+                else
+                    if usingWater then
+                        love.graphics.setShader()
+                        usingWater = false
+                    end
+                    if def and def.texture and tileSheets and tileQuads then
+                        -- Tile con textura (fallback si no hay shader)
+                        love.graphics.setColor(1, 1, 1)
+                        local sheet = tileSheets[def.texture]
+                        local quad = tileQuads[def.texture]
+                        if sheet and quad then
+                            love.graphics.draw(sheet, quad, px, py, 0, t/16, t/16)
+                        else
+                            love.graphics.setColor(def.color)
+                            love.graphics.rectangle("fill", px, py, t, t)
+                        end
+                    else
+                        -- Tile con color solido
+                        love.graphics.setColor(def and def.color or {0.039,0.039,0.039})
+                        love.graphics.rectangle("fill", px, py, t, t)
+                    end
                 end
-                love.graphics.setColor(col)
-                love.graphics.rectangle("fill", px, py, t, t)
             end
         end
+    end
+    if usingWater then
+        love.graphics.setShader()
     end
 end
 
