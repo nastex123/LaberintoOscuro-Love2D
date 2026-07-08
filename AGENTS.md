@@ -21,10 +21,40 @@
   where `x` and `y` are world coordinates (in pixels).
 - The player's flashlight is added automatically each frame (white color).
 
+## Water shader system (animated pixel water)
+- `shaders/water1.glsl` replaces the water texture with a world‑space stationary pixel shader. Uniforms:
+  - `u_resolution`, `u_camera` (vec2) – screen size & camera offset.
+  - `u_pixelCount` (float) – number of pixels in the grid (10–60).
+  - `u_waterSpeed` (float) – animation speed (0.05–2.0).
+  - `u_distortion` (float) – wave distortion intensity (0.01–0.50).
+  - `u_waterScale` (float) – pattern zoom scale (0.2–3.0).
+- `shaders/splash1.glsl` is an additive overlay with two phases:
+  1. **Splash explosion** – expanding white foam at the entry point (uses `u_splashProgress`, `u_splashWorld`, `u_splashPixelCount`, `u_splashCenterRadius`, `u_splashScale`).
+  2. **Ring** – pulsating ring + 5 orbiting particles around the player, gated by the water mask (`u_inWater`, `u_ringBaseRadius`, `u_ringPulseSpeed`, `u_ringScale`, `u_waterMask`).
+- **Render order**: ① water mask canvas built → ② maze water + ring shader pass in sceneCanvas → ③ player on top → ④ flashlight → ⑤ splash explosion pass.
+- **Water mask** (`waterMaskCanvas`): white rectangles over visible water tiles, sampled by splash shader at `pixcoord / u_resolution` to gate the ring.
+
+## F1 panel water/splash/ring parameters
+| Section  | Parameter            | Default | Range     | Step |
+|----------|----------------------|---------|-----------|------|
+| WATER    | Water PixelCount     | 20      | 10–60     | 1    |
+| WATER    | Water Speed          | 0.25    | 0.05–2.0  | 0.05 |
+| WATER    | Water Distortion     | 0.09    | 0.01–0.50 | 0.01 |
+| WATER    | Water Scale          | 1.0x    | 0.2–3.0   | 0.1  |
+| SPLASH   | Splash PixelCount    | 30      | 10–80     | 1    |
+| SPLASH   | Splash CenterSize    | 0.04    | 0.01–0.20 | 0.01 |
+| SPLASH   | Splash Duration      | 1.0s    | 0.2–2.0   | 0.05 |
+| SPLASH   | Splash Scale         | 1.0x    | 0.2–3.0   | 0.1  |
+| RING     | Ring Radius          | 0.01    | 0.01–0.20 | 0.01 |
+| RING     | Ring Speed           | 3.0     | 0.5–10.0  | 0.5  |
+| RING     | Ring Scale           | 1.0x    | 0.2–3.0   | 0.1  |
+
+- All parameters are persisted to `ui_config.json`.
+
 ## Adding/Modifying shaders
 1. Place the `.glsl` file in the `shaders/` directory.
 2. If you replace the default, edit `loadShaders()` in `main.lua` to load the new file and update `shaderNames`.
-3. Ensure the shader defines the same uniforms as above; otherwise `shader:send` calls will error.
+3. Ensure the shader defines all required uniforms (see sections above); otherwise `shader:send` calls will error.
 
 ## Debug overlay
 - `debugInfo.lua` draws a top‑right overlay with maze state, player distance, lives, etc.

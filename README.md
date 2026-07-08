@@ -253,7 +253,7 @@ Los consumibles se usan presionando **Q**. Se consume el primer consumible dispo
 | `room_templates.lua`  | Plantillas de salas personalizadas           |
 | `perlin.lua`          | Ruido Perlin para degradar paredes           |
 | `json.lua`            | Decodificador JSON para configuración        |
-| `shaders/`            | Shaders GLSL (light_falloff, shine)          |
+| `shaders/`            | Shaders GLSL (light_falloff, shine, water1, splash1) |
 
 ---
 
@@ -268,6 +268,42 @@ Edita `maze_config.json` o usa el menú **F1** en tiempo real para ajustar:
 - `loopChance`: Probabilidad de crear lazos
 - `perlinThresh`: Umbral de ruido Perlin para degradar paredes
 - `seed`: Semilla determinista (omite para aleatorio)
+
+---
+
+## Sistema de agua (shaders)
+
+### water1.glsl
+Reemplaza la textura del agua con un shader pixelado estacionario en espacio mundo. Uniformes:
+- `u_pixelCount` — grilla de píxeles (10–60)
+- `u_waterSpeed` — velocidad de animación (0.05–2.0)
+- `u_distortion` — intensidad de ondas (0.01–0.50)
+- `u_waterScale` — zoom del patrón (0.2–3.0)
+
+### splash1.glsl
+Overlay additive con dos fases:
+1. **Splash**: espuma blanca expandiéndose al entrar al agua (usa `u_splashScale`).
+2. **Anillo**: anillo pulsante + 5 partículas orbitales alrededor del jugador, enmascarado por tiles de agua (usa `u_ringScale`).
+
+### Orden de render
+① waterMaskCanvas → ② sceneCanvas: agua + anillo → ③ jugador → ④ linterna (flashlight) → ⑤ splash de entrada.
+
+### Parámetros del panel F1
+| Sección | Parámetro       | Defecto | Rango     |
+|---------|-----------------|---------|-----------|
+| WATER   | Water PixelCount| 20      | 10–60     |
+| WATER   | Water Speed     | 0.25    | 0.05–2.0  |
+| WATER   | Water Distortion| 0.09    | 0.01–0.50 |
+| WATER   | Water Scale     | 1.0x    | 0.2–3.0   |
+| SPLASH  | Splash PixelCount | 30    | 10–80     |
+| SPLASH  | Splash CenterSize | 0.04  | 0.01–0.20 |
+| SPLASH  | Splash Duration | 1.0s    | 0.2–2.0   |
+| SPLASH  | Splash Scale    | 1.0x    | 0.2–3.0   |
+| RING    | Ring Radius     | 0.01    | 0.01–0.20 |
+| RING    | Ring Speed      | 3.0     | 0.5–10.0  |
+| RING    | Ring Scale      | 1.0x    | 0.2–3.0   |
+
+Todos los parámetros se persisten a `ui_config.json`.
 
 ---
 
