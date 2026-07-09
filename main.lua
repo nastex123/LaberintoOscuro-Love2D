@@ -1096,7 +1096,6 @@ end
 function love.mousepressed(mx, my, button)
     if editor.active then
         if button == 1 then
-            -- Check button rects
             for _, rect in ipairs(editor.buttonRects) do
                 if mx >= rect.x and mx <= rect.x + rect.w and
                    my >= rect.y and my <= rect.y + rect.h then
@@ -1167,7 +1166,26 @@ function love.mousepressed(mx, my, button)
                         editor.editingName = true
                         editor.nameBuffer = editor.name
                     end
-return
+                    return
+                end
+            end
+        end
+
+        local tileId = editorTileFromMouse(mx, my)
+        if tileId then
+            editor.brush = tileId
+            return
+        end
+
+        local gx, gy = editorCellFromMouse(mx, my)
+        if gx then
+            if button == 1 then
+                editorPaintCell(gx, gy, editor.brush)
+            elseif button == 2 then
+                editorPaintCell(gx, gy, 0)
+            end
+        end
+        return
     end
 
     -- F3 Character editor mouse
@@ -1298,28 +1316,7 @@ return
             end
         end
         return
-    end
 end
-        end
-
-        -- Verificar click en la barra lateral de tiles
-        local tileId = editorTileFromMouse(mx, my)
-        if tileId then
-            editor.brush = tileId
-            return
-        end
-
-        -- Pintar en la grilla
-        local gx, gy = editorCellFromMouse(mx, my)
-        if gx then
-            if button == 1 then
-                editorPaintCell(gx, gy, editor.brush)
-            elseif button == 2 then
-                editorPaintCell(gx, gy, 0)
-            end
-        end
-        return
-    end
 end
 
 function love.mousemoved(mx, my)
