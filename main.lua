@@ -1188,26 +1188,26 @@ function love.mousepressed(mx, my, button)
         return
     end
 
-    -- F3 Character editor mouse
+-- F3 Character editor mouse
     if charEditor.active then
-        local PANEL_X = 20
-        local PANEL_Y = 55
-        local PANEL_W = 400
-        local TAB_Y = PANEL_Y + 32
-        local TAB_W = 120
-        local TAB_H = 28
-        local LINE_H = 24
+        local sw, sh = love.graphics.getDimensions()
+        local PANEL_W = 620
+        local PANEL_H = 520
+        local PANEL_X = math.floor((sw - PANEL_W) / 2)
+        local PANEL_Y = math.floor((sh - PANEL_H) / 2)
+        local char = player.character
 
-        -- Close button
-        if mx >= PANEL_X + PANEL_W - 28 and mx <= PANEL_X + PANEL_W - 6 and
-           my >= PANEL_Y + 6 and my <= PANEL_Y + 28 then
+        if mx >= PANEL_X + PANEL_W - 26 and mx <= PANEL_X + PANEL_W - 6 and
+           my >= PANEL_Y + 6 and my <= PANEL_Y + 26 then
             charEditor.active = false
             return
         end
 
-        -- Tabs
+        local TAB_Y = PANEL_Y + 32
+        local TAB_H = 24
+        local TAB_W = 80
         for i, tn in ipairs(charEditor.tabNames) do
-            local tx = PANEL_X + 10 + (i - 1) * (TAB_W + 6)
+            local tx = PANEL_X + (PANEL_W / #charEditor.tabNames) * (i - 1) + 20
             if mx >= tx and mx <= tx + TAB_W and my >= TAB_Y and my <= TAB_Y + TAB_H then
                 charEditor.tab = tn
                 charEditor.paramSel = 1
@@ -1215,59 +1215,130 @@ function love.mousepressed(mx, my, button)
             end
         end
 
-        local char = player.character
-        local CONTENT_Y = TAB_Y + TAB_H + 12
+        local CONTENT_Y = TAB_Y + TAB_H + 10
 
         if charEditor.tab == "PARTES" then
-            -- Parts sidebar click
             local SIDEBAR_X = PANEL_X + 10
             local SIDEBAR_W = 110
+            local CANVAS_X = PANEL_X + 135
+            local CANVAS_Y = CONTENT_Y
+            local CANVAS_S = 200
+            local PROP_X = CANVAS_X + CANVAS_S + 15
+
+            -- Sidebar parts click
             local spy = CONTENT_Y
-            for i, part in ipairs(char.parts) do
+            for i, p in ipairs(char.parts) do
                 if mx >= SIDEBAR_X and mx <= SIDEBAR_X + SIDEBAR_W and
-                   my >= spy and my <= spy + 22 then
+                   my >= spy and my <= spy + 20 then
                     charEditor.partSel = i
                     charEditor.paramSel = 1
                     return
                 end
-                spy = spy + 24
+                spy = spy + 22
+            end
+
+            local btnY = spy + 6
+            for bi = 1, 4 do
+                local bx = SIDEBAR_X + (bi - 1) * 28
+                if mx >= bx and mx <= bx + 25 and my >= btnY and my <= btnY + 20 then
+                    if bi == 1 then
+                        table.insert(char.parts, charEditor.partSel + 1, Character.defaultPart())
+                    elseif bi == 2 and #char.parts > 1 then
+                        table.remove(char.parts, charEditor.partSel)
+                        charEditor.partSel = math.min(charEditor.partSel, #char.parts)
+                    elseif bi == 3 and charEditor.partSel > 1 then
+                        local idx = charEditor.partSel
+                        char.parts[idx], char.parts[idx - 1] = char.parts[idx - 1], char.parts[idx]
+                        charEditor.partSel = idx - 1
+                    elseif bi == 4 and charEditor.partSel < #char.parts then
+                        local idx = charEditor.partSel
+                        char.parts[idx], char.parts[idx + 1] = char.parts[idx + 1], char.parts[idx]
+                        charEditor.partSel = idx + 1
+                    end
+                    return
+                end
+            end
+
+            -- Canvas click - hit test parts
+            local scale = 3
+            local cx = CANVAS_X + CANVAS_S/2
+            local cy = CANVAS_Y + CANVAS_S/2
+            local relX = (mx - cx) / scale
+            local relY = (my - cy) / scale
+            if mx >= CANVAS_X and mx <= CANVAS_X + CANVAS_S and
+               my >= CANVAS_Y and my <= CANVAS_Y + CANVAS_S then
+                for i = #char.parts, 1, -1 do
+                    if Character.hitTestPart(char.parts[i], relX, relY) then
+                        charEditor.partSel = i
+                        return
+                    end
+                end
+            end
+
+            -- Canvas drag
+            if button == 1 and mx >= CANVAS_X and mx <= CANVAS_X + CANVAS_S and
+               my >= CANVAS_Y and my <= CANVAS_Y + CANVAS_S then
+                charEditor.dragging = true
+                charEditor.dragStartX = relX
+                charEditor.dragStartY = relY
+                charEditor.dragPartSel = charEditor.partSel
+                return
+            end
+
+            -- Tipo dropdown click
+            if part and mx >= PROP_X + 40 and mx <= PROP_X + 130 and my >= CONTENT_Y and my <= CONTENT_Y + 20 then
+                local types = {"circle", "rect", "line"}
+                for ti, tname in ipairs(types) do
+                    if tname ~= part.type then
+                        Character.changePartType(part, tname)
+                        break
+                    end
+                end
+                return
+            end
+
+            -- Color swatches click
+            if part then
+                local py2 = CONTENT_Y + 26
+                local params = Character.getParamMeta(part)
+                for pi = 1, #params do
+                    py2 = py2 + 22
+                end
+                for ci = 1, 8 do
+                    local sx = PROP_X + 50 + (ci - 1) * 22
+                    if mx >= sx and mx <= sx + 18 and my >= py2 and my <= py2 + 18 then
+                        part.colorR, part.colorG, part.colorB = PRESET_COLORS[ci][1], PRESET_COLORS[ci][2], PRESET_COLORS[ci][3]
+                        return
+                    end
+                end
             end
 
             -- Param sliders click
-            local part = char.parts[charEditor.partSel]
             if part then
                 local params = Character.getParamMeta(part)
-                local px = SIDEBAR_X + SIDEBAR_W + 15
-                local ppy = CONTENT_Y + 22
+                local py2 = CONTENT_Y + 26
                 for pi, pm in ipairs(params) do
-                    local SLIDER_X = px + 170
-                    local SLIDER_W = 100
-                    local SLIDER_H = 6
-                    local sliderY = ppy + 6
+                    local SLIDER_X = PROP_X + 90
+                    local SLIDER_W = 80
+                    local sliderY = py2 + 4
                     if mx >= SLIDER_X and mx <= SLIDER_X + SLIDER_W and
-                       my >= sliderY and my <= sliderY + SLIDER_H then
+                       my >= sliderY and my <= sliderY + 6 then
                         local t = math.max(0, math.min(1, (mx - SLIDER_X) / SLIDER_W))
                         part[pm.key] = pm.min + t * (pm.max - pm.min)
                         charEditor.paramSel = pi
                         return
                     end
-                    ppy = ppy + 22
+                    py2 = py2 + 22
                 end
             end
         elseif charEditor.tab == "POSES" then
             local py = CONTENT_Y
             for i = 1, 9 do
-                -- Save button
-                local sbx = PANEL_X + 150
-                if mx >= sbx and mx <= sbx + 70 and my >= py + 4 and my <= py + 24 then
-                    if char.parts then
-                        charEditor.poses[i] = Character.snapshot(char)
-                    end
+                if mx >= PANEL_X + 180 and mx <= PANEL_X + 260 and my >= py + 4 and my <= py + 24 then
+                    charEditor.poses[i] = Character.snapshot(char)
                     return
                 end
-                -- Load button
-                local lbx = sbx + 80
-                if mx >= lbx and mx <= lbx + 70 and my >= py + 4 and my <= py + 24 then
+                if mx >= PANEL_X + 270 and mx <= PANEL_X + 350 and my >= py + 4 and my <= py + 24 then
                     if charEditor.poses[i] and #charEditor.poses[i] > 0 then
                         Character.applyPose(char, charEditor.poses[i])
                     end
@@ -1276,47 +1347,43 @@ function love.mousepressed(mx, my, button)
                 py = py + 32
             end
         elseif charEditor.tab == "ANIM" then
-            -- Pose A / B click
             local py = CONTENT_Y
-            if mx >= PANEL_X + 100 and mx <= PANEL_X + 130 and my >= py and my <= py + 20 then
+            if mx >= PANEL_X + 120 and mx <= PANEL_X + 160 and my >= py and my <= py + 20 then
                 charEditor.animPoseA = charEditor.animPoseA % 9 + 1
                 return
             end
-            if mx >= PANEL_X + 220 and mx <= PANEL_X + 250 and my >= py and my <= py + 20 then
+            if mx >= PANEL_X + 270 and mx <= PANEL_X + 310 and my >= py and my <= py + 20 then
                 charEditor.animPoseB = charEditor.animPoseB % 9 + 1
                 return
             end
             py = py + 30
 
-            -- Blend slider click
-            local bsx = PANEL_X + 80
+            local bsx = PANEL_X + 110
             local bsy = py + 4
-            if mx >= bsx and mx <= bsx + 260 and my >= bsy and my <= bsy + 8 then
-                charEditor.animBlend = math.max(0, math.min(1, (mx - bsx) / 260))
+            if mx >= bsx and mx <= bsx + 300 and my >= bsy and my <= bsy + 8 then
+                charEditor.animBlend = math.max(0, math.min(1, (mx - bsx) / 300))
                 return
             end
             py = py + 30
 
-            -- Auto toggle click
-            local actx = PANEL_X + 60
+            local actx = PANEL_X + 90
             local acty = py
-            if mx >= actx and mx <= actx + 80 and my >= acty and my <= acty + 22 then
+            if mx >= actx and mx <= actx + 90 and my >= acty and my <= acty + 22 then
                 charEditor.animAuto = not charEditor.animAuto
                 charEditor.animTimer = 0
                 return
             end
-            py = py + 28
+            py = py + 30
 
-            -- Speed slider click
-            local vsx = PANEL_X + 60
+            local vsx = PANEL_X + 80
             local vsy = py + 4
-            if mx >= vsx and mx <= vsx + 180 and my >= vsy and my <= vsy + 8 then
-                charEditor.animSpeed = math.max(0.1, math.min(3.0, (mx - vsx) / 180 * 3.0))
+            if mx >= vsx and mx <= vsx + 200 and my >= vsy and my <= vsy + 8 then
+                charEditor.animSpeed = math.max(0.1, math.min(3.0, (mx - vsx) / 200 * 3.0))
                 return
             end
         end
         return
-end
+    end
 end
 
 function love.mousemoved(mx, my)
@@ -1328,6 +1395,25 @@ function love.mousemoved(mx, my)
             end
         end
         return
+    end
+    if charEditor.active and charEditor.dragging then
+        local sw, sh = love.graphics.getDimensions()
+        local PANEL_W = 620
+        local PANEL_X = math.floor((sw - PANEL_W) / 2)
+        local PANEL_Y = math.floor((sh - 520) / 2)
+        local CANVAS_X = PANEL_X + 135
+        local CANVAS_Y = PANEL_Y + 32 + 24 + 10
+        local CANVAS_S = 200
+        local scale = 3
+        local cx = CANVAS_X + CANVAS_S/2
+        local cy = CANVAS_Y + CANVAS_S/2
+        local relX = (mx - cx) / scale
+        local relY = (my - cy) / scale
+        local part = player.character.parts[charEditor.dragPartSel]
+        if part then
+            part.offsetX = relX
+            part.offsetY = relY
+        end
     end
 end
 
@@ -1341,6 +1427,12 @@ function love.wheelmoved(x, y)
                 part[pm.key] = math.max(pm.min, math.min(pm.max, part[pm.key] + pm.step * y))
             end
         end
+    end
+end
+
+function love.mousereleased(mx, my, button)
+    if button == 1 then
+        charEditor.dragging = false
     end
 end
 
@@ -1881,38 +1973,40 @@ local function drawEditor()
     love.graphics.printf("Click izq: pintar | Der: borrar | Flechas: mover cursor | 1-8: tile | S: guardar", 0, helpY, sw, "center")
 end
 
+local PRESET_COLORS = {
+    {1,1,1}, {0,1,1}, {1,1,0}, {1,0,0},
+    {0,1,0}, {0,0,1}, {1,0,1}, {1,0.8,0},
+}
+
 local function drawCharEditor()
     if not charEditor.active or not player or not player.character then return end
     local sw, sh = love.graphics.getDimensions()
-    local PANEL_X = 20
-    local PANEL_Y = 55
-    local PANEL_W = 400
-    local LINE_H = 24
+    local PANEL_W = 620
+    local PANEL_H = 520
+    local PANEL_X = math.floor((sw - PANEL_W) / 2)
+    local PANEL_Y = math.floor((sh - PANEL_H) / 2)
     local char = player.character
+    local part = char.parts[charEditor.partSel]
 
-    -- Overlay semi-transparent background
-    love.graphics.setColor(0, 0, 0, 0.85)
-    love.graphics.rectangle("fill", PANEL_X, PANEL_Y, PANEL_W, 430)
+    love.graphics.setColor(0, 0, 0, 0.88)
+    love.graphics.rectangle("fill", PANEL_X, PANEL_Y, PANEL_W, PANEL_H)
 
-    -- Title bar
     love.graphics.setColor(1, 1, 1)
     love.graphics.setFont(fonts.f16)
-    love.graphics.print("F3 — Editor de Personaje", PANEL_X + 10, PANEL_Y + 8)
+    love.graphics.print("F3 - Editor de Personaje", PANEL_X + 10, PANEL_Y + 8)
 
-    -- Close button
-    local closeBtn = {x = PANEL_X + PANEL_W - 28, y = PANEL_Y + 6, w = 22, h = 22}
+    local closeBtn = {x = PANEL_X + PANEL_W - 26, y = PANEL_Y + 6, w = 20, h = 20}
     love.graphics.setColor(0.6, 0.2, 0.2)
     love.graphics.rectangle("fill", closeBtn.x, closeBtn.y, closeBtn.w, closeBtn.h)
     love.graphics.setColor(1, 1, 1)
     love.graphics.setFont(fonts.f14)
-    love.graphics.print("X", closeBtn.x + 6, closeBtn.y + 4)
+    love.graphics.print("X", closeBtn.x + 5, closeBtn.y + 2)
 
-    -- Tabs
     local TAB_Y = PANEL_Y + 32
-    local TAB_W = 120
-    local TAB_H = 28
+    local TAB_H = 24
+    local TAB_W = 80
     for i, tn in ipairs(charEditor.tabNames) do
-        local tx = PANEL_X + 10 + (i - 1) * (TAB_W + 6)
+        local tx = PANEL_X + (PANEL_W / #charEditor.tabNames) * (i - 1) + 20
         if tn == charEditor.tab then
             love.graphics.setColor(0.3, 0.6, 0.9)
         else
@@ -1921,75 +2015,146 @@ local function drawCharEditor()
         love.graphics.rectangle("fill", tx, TAB_Y, TAB_W, TAB_H)
         love.graphics.setColor(1, 1, 1)
         love.graphics.setFont(fonts.f12)
-        local tw = fonts.f12:getWidth(tn)
-        love.graphics.print(tn, tx + (TAB_W - tw) / 2, TAB_Y + 7)
+        love.graphics.print(tn, tx + (TAB_W - fonts.f12:getWidth(tn))/2, TAB_Y + 5)
     end
 
-    local CONTENT_Y = TAB_Y + TAB_H + 12
-    local CONTENT_H = 340
+    local CONTENT_Y = TAB_Y + TAB_H + 10
 
     if charEditor.tab == "PARTES" then
-        -- Left sidebar: parts list
         local SIDEBAR_X = PANEL_X + 10
         local SIDEBAR_W = 110
-        local py = CONTENT_Y
-        for i, part in ipairs(char.parts) do
-            local hover = false
-            local col
-            if i == charEditor.partSel then
-                col = {0.3, 0.6, 0.9}
-            else
-                col = {0.15, 0.15, 0.2}
-            end
+        local CANVAS_X = PANEL_X + 135
+        local CANVAS_Y = CONTENT_Y
+        local CANVAS_S = 200
+        local PROP_X = CANVAS_X + CANVAS_S + 15
+        local PROP_W = PANEL_W - PROP_X - PANEL_X - 10
+
+        -- Sidebar: lista de partes
+        local spy = CONTENT_Y
+        for i, p in ipairs(char.parts) do
+            local col = i == charEditor.partSel and {0.3, 0.6, 0.9} or {0.15, 0.15, 0.2}
             love.graphics.setColor(col)
-            love.graphics.rectangle("fill", SIDEBAR_X, py, SIDEBAR_W, 22)
+            love.graphics.rectangle("fill", SIDEBAR_X, spy, SIDEBAR_W, 20)
             love.graphics.setColor(1, 1, 1)
             love.graphics.setFont(fonts.f12)
-            love.graphics.print(part.name, SIDEBAR_X + 6, py + 4)
-            py = py + 24
+            love.graphics.print(p.name, SIDEBAR_X + 4, spy + 3)
+            spy = spy + 22
         end
 
-        -- Right panel: part parameters
-        local part = char.parts[charEditor.partSel]
+        local btnY = spy + 6
+        local btnColors = {{0.3,0.5,0.3}, {0.5,0.3,0.3}, {0.3,0.3,0.5}, {0.3,0.3,0.5}}
+        local btnLabels = {"+","-","▲","▼"}
+        for bi = 1, 4 do
+            love.graphics.setColor(btnColors[bi])
+            love.graphics.rectangle("fill", SIDEBAR_X + (bi - 1) * 28, btnY, 25, 20)
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.setFont(fonts.f14)
+            love.graphics.print(btnLabels[bi], SIDEBAR_X + (bi - 1) * 28 + 7, btnY + 2)
+        end
+
+        -- Canvas preview
+        love.graphics.setColor(0.08, 0.08, 0.1)
+        love.graphics.rectangle("fill", CANVAS_X, CANVAS_Y, CANVAS_S, CANVAS_S)
+        love.graphics.setColor(0.15, 0.15, 0.2)
+        love.graphics.rectangle("line", CANVAS_X, CANVAS_Y, CANVAS_S, CANVAS_S)
+        -- Grid lines
+        love.graphics.setColor(0.12, 0.12, 0.15)
+        for g = 0, 10 do
+            love.graphics.line(CANVAS_X + g*20, CANVAS_Y, CANVAS_X + g*20, CANVAS_Y + CANVAS_S)
+            love.graphics.line(CANVAS_X, CANVAS_Y + g*20, CANVAS_X + CANVAS_S, CANVAS_Y + g*20)
+        end
+        -- Crosshair
+        love.graphics.setColor(0.2, 0.2, 0.25)
+        love.graphics.line(CANVAS_X + CANVAS_S/2, CANVAS_Y, CANVAS_X + CANVAS_S/2, CANVAS_Y + CANVAS_S)
+        love.graphics.line(CANVAS_X, CANVAS_Y + CANVAS_S/2, CANVAS_X + CANVAS_S, CANVAS_Y + CANVAS_S/2)
+
+        local scale = 3
+        local cx = CANVAS_X + CANVAS_S/2
+        local cy = CANVAS_Y + CANVAS_S/2
+
+        for i, p in ipairs(char.parts) do
+            if p.type == "circle" then
+                local px = cx + p.offsetX * scale
+                local py = cy + p.offsetY * scale
+                love.graphics.setColor(p.colorR, p.colorG, p.colorB)
+                love.graphics.circle("fill", px, py, p.radius * scale)
+            elseif p.type == "rect" then
+                local px = cx + p.offsetX * scale
+                local py = cy + p.offsetY * scale
+                love.graphics.setColor(p.colorR, p.colorG, p.colorB)
+                love.graphics.rectangle("fill", px - p.width/2 * scale, py - p.height/2 * scale, p.width * scale, p.height * scale)
+            elseif p.type == "line" then
+                local rad = math.rad(p.angleDeg)
+                love.graphics.setColor(p.colorR, p.colorG, p.colorB)
+                love.graphics.setLineWidth(2 * scale)
+                love.graphics.line(cx + p.offsetX * scale, cy + p.offsetY * scale,
+                                    cx + (p.offsetX + math.cos(rad) * p.length) * scale,
+                                    cy + (p.offsetY + math.sin(rad) * p.length) * scale)
+                love.graphics.setLineWidth(1)
+            end
+            if i == charEditor.partSel then
+                local px = cx + p.offsetX * scale
+                local py = cy + p.offsetY * scale
+                love.graphics.setColor(1, 1, 0)
+                love.graphics.circle("line", px, py, (p.radius or 6) * scale + 3)
+            end
+        end
+
+        -- Propiedades
         if part then
-            local params = Character.getParamMeta(part)
-            local px = SIDEBAR_X + SIDEBAR_W + 15
-            local ppy = CONTENT_Y
+            local py2 = CONTENT_Y
             love.graphics.setFont(fonts.f12)
             love.graphics.setColor(1, 1, 1)
-            love.graphics.print("Parte: " .. part.name, px, ppy - 2)
-            ppy = ppy + 22
 
+            -- Tipo dropdown
+            love.graphics.print("Tipo:", PROP_X, py2)
+            love.graphics.setColor(0.2, 0.2, 0.3)
+            love.graphics.rectangle("fill", PROP_X + 40, py2, 90, 20)
+            love.graphics.setColor(1, 1, 1)
+            local ttxt = part.type == "circle" and "Circulo" or part.type == "rect" and "Rectangulo" or "Linea"
+            love.graphics.print(ttxt, PROP_X + 45, py2 + 3)
+
+            -- Nombre
+            love.graphics.print("Nombre:", PROP_X + 140, py2)
+            love.graphics.setColor(0.2, 0.2, 0.3)
+            love.graphics.rectangle("fill", PROP_X + 200, py2, 90, 20)
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.print(part.name, PROP_X + 205, py2 + 3)
+
+            py2 = py2 + 26
+
+            local params = Character.getParamMeta(part)
             for pi, pm in ipairs(params) do
                 local val = part[pm.key]
-                if val ~= nil then
-                    local txt = pm.name .. ": " .. string.format(pm.fmt, val)
-                    love.graphics.setFont(fonts.f12)
-                    if pi == charEditor.paramSel then
-                        love.graphics.setColor(1, 1, 0)
-                    else
-                        love.graphics.setColor(0.8, 0.8, 0.8)
-                    end
-                    love.graphics.print(txt, px, ppy)
+                local txt = pm.name .. ": " .. string.format(pm.fmt, val)
+                love.graphics.setFont(fonts.f12)
+                love.graphics.setColor(pi == charEditor.paramSel and 1 or 0.8, pi == charEditor.paramSel and 1 or 0.8, pi == charEditor.paramSel and 0 or 0.8)
+                love.graphics.print(txt, PROP_X, py2)
 
-                    -- Slider bar
-                    local SLIDER_X = px + 170
-                    local SLIDER_W = 100
-                    local SLIDER_H = 6
-                    local sliderY = ppy + 6
-                    love.graphics.setColor(0.3, 0.3, 0.3)
-                    love.graphics.rectangle("fill", SLIDER_X, sliderY, SLIDER_W, SLIDER_H)
-                    local t = (val - pm.min) / (pm.max - pm.min)
-                    love.graphics.setColor(0.6, 0.8, 1.0)
-                    love.graphics.rectangle("fill", SLIDER_X, sliderY, SLIDER_W * t, SLIDER_H)
-                    love.graphics.setColor(0.8, 0.8, 0.8)
-                    love.graphics.rectangle("line", SLIDER_X, sliderY, SLIDER_W, SLIDER_H)
+                local SLIDER_X = PROP_X + 90
+                local SLIDER_W = 80
+                local sliderY = py2 + 4
+                love.graphics.setColor(0.3, 0.3, 0.3)
+                love.graphics.rectangle("fill", SLIDER_X, sliderY, SLIDER_W, 6)
+                local t = (val - pm.min) / (pm.max - pm.min)
+                love.graphics.setColor(0.6, 0.8, 1.0)
+                love.graphics.rectangle("fill", SLIDER_X, sliderY, SLIDER_W * t, 6)
+                love.graphics.setColor(0.8, 0.8, 0.8)
+                love.graphics.rectangle("line", SLIDER_X, sliderY, SLIDER_W, 6)
+                py2 = py2 + 22
+            end
 
-                    if charEditor.sliders then
-                        charEditor.sliders[pi] = {x = SLIDER_X, y = sliderY, w = SLIDER_W, h = SLIDER_H, paramIdx = pi, partIdx = charEditor.partSel, meta = pm}
-                    end
-                end
-                ppy = ppy + 22
+            -- Color swatches
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.setFont(fonts.f12)
+            love.graphics.print("Color:", PROP_X, py2)
+
+            local swSize = 18
+            for ci, c in ipairs(PRESET_COLORS) do
+                love.graphics.setColor(c)
+                love.graphics.rectangle("fill", PROP_X + 50 + (ci - 1) * (swSize + 4), py2, swSize, swSize)
+                love.graphics.setColor(0.5, 0.5, 0.5)
+                love.graphics.rectangle("line", PROP_X + 50 + (ci - 1) * (swSize + 4), py2, swSize, swSize)
             end
         end
     elseif charEditor.tab == "POSES" then
@@ -1997,89 +2162,81 @@ local function drawCharEditor()
         for i = 1, 9 do
             local hasPose = charEditor.poses[i] and #charEditor.poses[i] > 0
             love.graphics.setColor(0.2, 0.2, 0.25)
-            love.graphics.rectangle("fill", PANEL_X + 10, py, 370, 28)
+            love.graphics.rectangle("fill", PANEL_X + 30, py, 560, 28)
             love.graphics.setColor(1, 1, 1)
             love.graphics.setFont(fonts.f12)
-            local label = "Pose " .. i .. (hasPose and " (guardada)" or " (vacia)")
-            love.graphics.print(label, PANEL_X + 16, py + 6)
-
-            -- Save button
-            local sbx = PANEL_X + 150
+            love.graphics.print("Pose " .. i .. (hasPose and " (guardada)" or " (vacia)"), PANEL_X + 36, py + 6)
+            local sbx = PANEL_X + 180
             love.graphics.setColor(0.3, 0.5, 0.3)
-            love.graphics.rectangle("fill", sbx, py + 4, 70, 20)
+            love.graphics.rectangle("fill", sbx, py + 4, 80, 20)
             love.graphics.setColor(1, 1, 1)
-            local tw = fonts.f12:getWidth("Guardar")
-            love.graphics.print("Guardar", sbx + (70 - tw) / 2, py + 6)
-
-            -- Load button
-            local lbx = sbx + 80
+            love.graphics.print("Guardar", sbx + 12, py + 5)
+            local lbx = sbx + 90
             love.graphics.setColor(0.3, 0.3, 0.5)
-            love.graphics.rectangle("fill", lbx, py + 4, 70, 20)
+            love.graphics.rectangle("fill", lbx, py + 4, 80, 20)
             love.graphics.setColor(1, 1, 1)
-            tw = fonts.f12:getWidth("Cargar")
-            love.graphics.print("Cargar", lbx + (70 - tw) / 2, py + 6)
-
+            love.graphics.print("Cargar", lbx + 14, py + 5)
             py = py + 32
         end
     elseif charEditor.tab == "ANIM" then
         local py = CONTENT_Y
         love.graphics.setFont(fonts.f12)
         love.graphics.setColor(0.8, 0.8, 0.8)
-        love.graphics.print("Pose A:", PANEL_X + 10, py)
+        love.graphics.print("Pose A:", PANEL_X + 40, py)
         love.graphics.setColor(1, 1, 1)
-        love.graphics.print(tostring(charEditor.animPoseA), PANEL_X + 110, py)
-        love.graphics.print("Pose B:", PANEL_X + 180, py)
-        love.graphics.print(tostring(charEditor.animPoseB), PANEL_X + 230, py)
+        local atxt = tostring(charEditor.animPoseA)
+        love.graphics.rectangle("line", PANEL_X + 120, py, 40, 20)
+        love.graphics.print(atxt, PANEL_X + 125, py + 3)
+        love.graphics.setColor(0.8, 0.8, 0.8)
+        love.graphics.print("Pose B:", PANEL_X + 200, py)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.rectangle("line", PANEL_X + 270, py, 40, 20)
+        love.graphics.print(tostring(charEditor.animPoseB), PANEL_X + 275, py + 3)
         py = py + 30
 
-        -- Blend slider
         love.graphics.setColor(0.8, 0.8, 0.8)
-        love.graphics.print("Mezcla:", PANEL_X + 16, py)
-        local bsx = PANEL_X + 80
+        love.graphics.print("Mezcla:", PANEL_X + 40, py)
+        local bsx = PANEL_X + 110
         local bsy = py + 4
         love.graphics.setColor(0.3, 0.3, 0.3)
-        love.graphics.rectangle("fill", bsx, bsy, 260, 8)
+        love.graphics.rectangle("fill", bsx, bsy, 300, 8)
         love.graphics.setColor(0.6, 0.8, 1.0)
-        love.graphics.rectangle("fill", bsx, bsy, 260 * charEditor.animBlend, 8)
+        love.graphics.rectangle("fill", bsx, bsy, 300 * charEditor.animBlend, 8)
         love.graphics.setColor(0.8, 0.8, 0.8)
-        love.graphics.rectangle("line", bsx, bsy, 260, 8)
+        love.graphics.rectangle("line", bsx, bsy, 300, 8)
         love.graphics.setFont(fonts.f12)
-        love.graphics.print(string.format("%.2f", charEditor.animBlend), bsx + 205, bsy + 10)
+        love.graphics.print(string.format("%.2f", charEditor.animBlend), bsx + 285, bsy + 10)
         py = py + 30
 
-        -- Auto toggle
         love.graphics.setFont(fonts.f12)
         love.graphics.setColor(0.8, 0.8, 0.8)
-        love.graphics.print("Auto:", PANEL_X + 16, py)
-        local actx = PANEL_X + 60
+        love.graphics.print("Auto:", PANEL_X + 40, py)
+        local actx = PANEL_X + 90
         local acty = py
         local actCol = charEditor.animAuto and {0.3, 0.6, 0.3} or {0.3, 0.3, 0.3}
         love.graphics.setColor(actCol)
-        love.graphics.rectangle("fill", actx, acty, 80, 22)
+        love.graphics.rectangle("fill", actx, acty, 90, 22)
         love.graphics.setColor(1, 1, 1)
-        local atxt = charEditor.animAuto and "ACTIVO" or "INACTIVO"
-        love.graphics.print(atxt, actx + 10, acty + 5)
-        py = py + 28
+        love.graphics.print(charEditor.animAuto and "ACTIVO" or "INACTIVO", actx + 12, acty + 4)
+        py = py + 30
 
-        -- Speed slider
         love.graphics.setColor(0.8, 0.8, 0.8)
-        love.graphics.print("Vel:", PANEL_X + 16, py)
-        local vsx = PANEL_X + 60
+        love.graphics.print("Vel:", PANEL_X + 40, py)
+        local vsx = PANEL_X + 80
         local vsy = py + 4
         love.graphics.setColor(0.3, 0.3, 0.3)
-        love.graphics.rectangle("fill", vsx, vsy, 180, 8)
+        love.graphics.rectangle("fill", vsx, vsy, 200, 8)
         local vt = charEditor.animSpeed / 3.0
         love.graphics.setColor(0.6, 0.8, 1.0)
-        love.graphics.rectangle("fill", vsx, vsy, 180 * vt, 8)
+        love.graphics.rectangle("fill", vsx, vsy, 200 * vt, 8)
         love.graphics.setColor(0.8, 0.8, 0.8)
-        love.graphics.rectangle("line", vsx, vsy, 180, 8)
-        love.graphics.print(string.format("%.1f", charEditor.animSpeed), vsx + 185, vsy + 10)
+        love.graphics.rectangle("line", vsx, vsy, 200, 8)
+        love.graphics.print(string.format("%.1f", charEditor.animSpeed), vsx + 205, vsy + 10)
     end
 
-    -- Save hint at bottom
     love.graphics.setColor(0.5, 0.5, 0.5)
     love.graphics.setFont(fonts.f12)
-    love.graphics.print("S: guardar  |  ESC: cerrar  |  Tab: pestaña", PANEL_X + 10, PANEL_Y + 400)
+    love.graphics.print("S: guardar | ESC: cerrar | Tab: pestaña", PANEL_X + 10, PANEL_Y + PANEL_H - 20)
 end
 
 function love.draw()

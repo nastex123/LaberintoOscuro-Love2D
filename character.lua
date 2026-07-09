@@ -101,7 +101,45 @@ function Character.applyPose(char, pose)
     end
 end
 
-function Character.lerpPose(poseA, poseB, t)
+function Character.defaultPart()
+    return { name = "Nueva", type = "circle", offsetX = 0, offsetY = 0, radius = 3, colorR = 1, colorG = 1, colorB = 1 }
+end
+
+function Character.hitTestPart(part, mx, my)
+    if part.type == "circle" then
+        return (mx - part.offsetX)^2 + (my - part.offsetY)^2 <= part.radius^2
+    elseif part.type == "rect" then
+        return mx >= part.offsetX - part.width/2 and mx <= part.offsetX + part.width/2 and
+               my >= part.offsetY - part.height/2 and my <= part.offsetY + part.height/2
+    elseif part.type == "line" then
+        local rad = math.rad(part.angleDeg)
+        local ex = part.offsetX + math.cos(rad) * part.length
+        local ey = part.offsetY + math.sin(rad) * part.length
+        local dx, dy = ex - part.offsetX, ey - part.offsetY
+        local len = math.sqrt(dx^2 + dy^2)
+        if len < 0.01 then return false end
+        local t = ((mx - part.offsetX) * dx + (my - part.offsetY) * dy) / (len^2)
+        t = math.max(0, math.min(1, t))
+        local px, py = part.offsetX + t * dx, part.offsetY + t * dy
+        return math.sqrt((mx - px)^2 + (my - py)^2) < 4
+    end
+    return false
+end
+
+local function defaultForType(t)
+    if t == "circle" then return {radius = 3}
+    elseif t == "rect" then return {width = 3, height = 3}
+    else return {length = 5, angleDeg = 0}
+    end
+end
+
+function Character.changePartType(part, newType)
+    local leftovers = defaultForType(newType)
+    for k, v in pairs(leftovers) do
+        part[k] = v
+    end
+    part.type = newType
+end
     local result = {}
     for i = 1, #poseA do
         result[i] = {}
