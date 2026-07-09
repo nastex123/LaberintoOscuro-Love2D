@@ -3,6 +3,7 @@
 local Perlin = require "perlin"
 local roomTemplates = require "room_templates"
 local Tiles = require "tiles"
+local UIDebug = require "ui_debug"
 
 local Maze = {}
 Maze.__index = Maze
@@ -695,10 +696,10 @@ function Maze:draw(camera, waterMaskCanvas)
         waterShader:send("u_time", love.timer.getTime())
         waterShader:send("u_resolution", {love.graphics.getDimensions()})
         waterShader:send("u_camera", {camera.x, camera.y})
-        waterShader:send("u_pixelCount", waterPixelCount)
-        waterShader:send("u_waterSpeed", waterSpeed)
-        waterShader:send("u_distortion", waterDistortion)
-        waterShader:send("u_waterScale", waterScale)
+        waterShader:send("u_pixelCount", UIDebug.waterPixelCount)
+        waterShader:send("u_waterSpeed", UIDebug.waterSpeed)
+        waterShader:send("u_distortion", UIDebug.waterDistortion)
+        waterShader:send("u_waterScale", UIDebug.waterScale)
     end
     local usingWater = false
     for y = 0, self.rows - 1 do

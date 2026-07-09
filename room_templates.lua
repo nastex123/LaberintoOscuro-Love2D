@@ -108,13 +108,13 @@ local templates = {
     {
         name = "Pozo (D)",
         grid = {
-            ".......",
-            ".......",
-            "..###..",
-            "..###..",
-            "..###..",
-            ".......",
-            ".......",
+            "###....",
+            "#......",
+            "..WWW..",
+            "..WWW..",
+            "..WWW..",
+            "......#",
+            ".....##",
         },
     },
     {
@@ -165,6 +165,21 @@ local templates = {
             "..X..",
             ".....",
             ".....",
+        },
+    },c:\Users\Usuario\Documents\Brandon\Godot\Games\firt 3d game
+    {
+        name = "Nueva sala",
+        grid = {
+            "..........",
+            "..WWWWWWW.",
+            "..WWWWWWW.",
+            "..#W###WW.",
+            "..WW###WW.",
+            "..WW###WW.",
+            "..WWWWWWW.",
+            "..WWWWWWW.",
+            ".........#",
+            "......####",
         },
     },
 }

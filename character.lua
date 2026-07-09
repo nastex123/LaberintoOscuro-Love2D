@@ -63,13 +63,24 @@ function CharInstance:draw(sx, sy, bobOffset, sinkOffset)
     end
 end
 
-function Character.create()
+function Character.create(parts)
     local self = setmetatable({}, CharInstance)
     self.parts = {}
-    for _, dp in ipairs(DEFAULT_PARTS) do
-        local p = {}
-        for k, v in pairs(dp) do p[k] = v end
-        table.insert(self.parts, p)
+    if parts then
+        -- Load supplied parts (deep copy to avoid mutating the loaded table)
+        for _, src in ipairs(parts) do
+            local p = {}
+            for k, v in pairs(src) do p[k] = v end
+            -- Ensure the part has all fields appropriate for its type
+            Character.normalizePart(p)
+            table.insert(self.parts, p)
+        end
+    else
+        for _, dp in ipairs(DEFAULT_PARTS) do
+            local p = {}
+            for k, v in pairs(dp) do p[k] = v end
+            table.insert(self.parts, p)
+        end
     end
     return self
 end
@@ -134,12 +145,47 @@ local function defaultForType(t)
 end
 
 function Character.changePartType(part, newType)
-    local leftovers = defaultForType(newType)
-    for k, v in pairs(leftovers) do
+    -- Preserve old type to clean its specific fields
+    local oldType = part.type
+    part.type = newType
+    -- Remove fields that belong to the previous type
+    local oldDefaults = defaultForType(oldType)
+    if oldDefaults then
+        for k, _ in pairs(oldDefaults) do
+            part[k] = nil
+        end
+    end
+    -- Apply defaults for the new type
+    local defaults = defaultForType(newType)
+    for k, v in pairs(defaults) do
         part[k] = v
     end
-    part.type = newType
+    -- Ensure generic fields exist
+    part.offsetX = part.offsetX or 0
+    part.offsetY = part.offsetY or 0
+    part.colorR = part.colorR or 1
+    part.colorG = part.colorG or 1
+    part.colorB = part.colorB or 1
 end
+
+-- Ensure a part has all required fields for its type (used when loading saved parts)
+function Character.normalizePart(part)
+    part.type = part.type or "circle"
+    local defaults = defaultForType(part.type)
+    if defaults then
+        for k, v in pairs(defaults) do
+            if part[k] == nil then part[k] = v end
+        end
+    end
+    part.offsetX = part.offsetX or 0
+    part.offsetY = part.offsetY or 0
+    part.colorR = part.colorR or 1
+    part.colorG = part.colorG or 1
+    part.colorB = part.colorB or 1
+    part.name = part.name or "Unnamed"
+end
+
+function Character.lerpPose(poseA, poseB, t)
     local result = {}
     for i = 1, #poseA do
         result[i] = {}
