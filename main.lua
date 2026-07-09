@@ -9,6 +9,7 @@ local Vault  = require "vault"
 local ChestAnim = require "chest_animation"
 local TouchUI = require "touch_ui"
 local Tiles = require "tiles"
+local Character = require "character"
 
 local lives = 3
 local state = "play" -- "play", "win", "dead"
@@ -56,6 +57,23 @@ local editor = {
     width = 10, height = 10, name = "Nueva sala",
     editingName = false, nameBuffer = "",
     buttonRects = {},
+}
+
+local charEditor = {
+    active = false,
+    tab = "PARTES",
+    tabNames = {"PARTES", "POSES", "ANIM"},
+    partSel = 1,
+    paramSel = 1,
+    poses = {[1]={}, [2]={}, [3]={}, [4]={}, [5]={}, [6]={}, [7]={}, [8]={}, [9]={}},
+    animPoseA = 1,
+    animPoseB = 2,
+    animBlend = 0,
+    animAuto = false,
+    animSpeed = 0.5,
+    animTimer = 0,
+    charConfigPath = "char_config.json",
+    sliders = {},
 }
 -- Brochas generadas desde tiles.lua (single source of truth)
 local brushChars = {}
@@ -450,6 +468,30 @@ function love.load()
 
     -- Sincronizar duración de ataque con el player (se crea más abajo en resetGameState, pero ya existe para cuando se usa en reset)
 
+    -- Cargar configuración de personaje (partes y poses)
+    local charData = love.filesystem.read(charEditor.charConfigPath)
+    if charData and charData ~= "" then
+        local ok, parsed = pcall(json.decode, charData)
+        if ok then
+            if parsed.parts then
+                for i, pd in ipairs(parsed.parts) do
+                    if player.character.parts[i] then
+                        for k, v in pairs(pd) do
+                            player.character.parts[i][k] = v
+                        end
+                    end
+                end
+            end
+            if parsed.poses then
+                for i, pose in ipairs(parsed.poses) do
+                    if i <= 9 and pose then
+                        charEditor.poses[i] = pose
+                    end
+                end
+            end
+        end
+    end
+
     --=== 6. Luz estática de salida (amarilla) ===
     if maze.exitCell then
         addLight(maze.exitCell.x * maze.tile, maze.exitCell.y * maze.tile,
@@ -507,6 +549,22 @@ local function saveUIConfig()
     local data = { chestOffsetX = chestOffsetX, handRadius = handRadius, attackDuration = attackDuration, splashDuration = splashDuration, splashPixelCount = splashPixelCount, splashCenterSize = splashCenterSize, ringBaseRadius = ringBaseRadius, ringPulseSpeed = ringPulseSpeed, waterScale = waterScale, splashScale = splashScale, ringScale = ringScale, waterPixelCount = waterPixelCount, waterSpeed = waterSpeed, waterDistortion = waterDistortion }
     local content = json.encode(data)
     love.filesystem.write(UI_CONFIG_PATH, content)
+end
+
+local function saveCharConfig()
+    local data = {
+        parts = {},
+        poses = charEditor.poses,
+    }
+    for i, part in ipairs(player.character.parts) do
+        local pd = {}
+        for k, v in pairs(part) do
+            pd[k] = v
+        end
+        table.insert(data.parts, pd)
+    end
+    local content = json.encode(data)
+    love.filesystem.write(charEditor.charConfigPath, content)
 end
 
 -- Resetea una partida completa conservando la configuracion actual.
@@ -779,12 +837,40 @@ elseif key == "s" then
         return
     end
 
-    -- UI toggle
+    -- UI / Character Editor toggle
     if key == "f1" then
+        if charEditor.active then charEditor.active = false end
         ui.active = not ui.active
         return
     end
-    if not ui.active then return end
+    if key == "f3" then
+        if ui.active then ui.active = false end
+        charEditor.active = not charEditor.active
+        if charEditor.active and player.character then
+            charEditor.poses = charEditor.poses or {}
+        end
+        return
+    end
+    if not ui.active and not charEditor.active then
+        -- Continue to normal key handling
+    elseif charEditor.active then
+        if key == "s" then
+            saveCharConfig()
+        elseif key == "escape" then
+            charEditor.active = false
+        elseif key == "tab" then
+            local idx = 1
+            for i, tn in ipairs(charEditor.tabNames) do
+                if tn == charEditor.tab then
+                    idx = i % #charEditor.tabNames + 1
+                    break
+                end
+            end
+            charEditor.tab = charEditor.tabNames[idx]
+            charEditor.paramSel = 1
+        end
+        return
+    end
 
     -- Navegación y acciones del menú
     local sel = ui.selection
@@ -1081,9 +1167,139 @@ function love.mousepressed(mx, my, button)
                         editor.editingName = true
                         editor.nameBuffer = editor.name
                     end
+return
+    end
+
+    -- F3 Character editor mouse
+    if charEditor.active then
+        local PANEL_X = 20
+        local PANEL_Y = 55
+        local PANEL_W = 400
+        local TAB_Y = PANEL_Y + 32
+        local TAB_W = 120
+        local TAB_H = 28
+        local LINE_H = 24
+
+        -- Close button
+        if mx >= PANEL_X + PANEL_W - 28 and mx <= PANEL_X + PANEL_W - 6 and
+           my >= PANEL_Y + 6 and my <= PANEL_Y + 28 then
+            charEditor.active = false
+            return
+        end
+
+        -- Tabs
+        for i, tn in ipairs(charEditor.tabNames) do
+            local tx = PANEL_X + 10 + (i - 1) * (TAB_W + 6)
+            if mx >= tx and mx <= tx + TAB_W and my >= TAB_Y and my <= TAB_Y + TAB_H then
+                charEditor.tab = tn
+                charEditor.paramSel = 1
+                return
+            end
+        end
+
+        local char = player.character
+        local CONTENT_Y = TAB_Y + TAB_H + 12
+
+        if charEditor.tab == "PARTES" then
+            -- Parts sidebar click
+            local SIDEBAR_X = PANEL_X + 10
+            local SIDEBAR_W = 110
+            local spy = CONTENT_Y
+            for i, part in ipairs(char.parts) do
+                if mx >= SIDEBAR_X and mx <= SIDEBAR_X + SIDEBAR_W and
+                   my >= spy and my <= spy + 22 then
+                    charEditor.partSel = i
+                    charEditor.paramSel = 1
                     return
                 end
+                spy = spy + 24
             end
+
+            -- Param sliders click
+            local part = char.parts[charEditor.partSel]
+            if part then
+                local params = Character.getParamMeta(part)
+                local px = SIDEBAR_X + SIDEBAR_W + 15
+                local ppy = CONTENT_Y + 22
+                for pi, pm in ipairs(params) do
+                    local SLIDER_X = px + 170
+                    local SLIDER_W = 100
+                    local SLIDER_H = 6
+                    local sliderY = ppy + 6
+                    if mx >= SLIDER_X and mx <= SLIDER_X + SLIDER_W and
+                       my >= sliderY and my <= sliderY + SLIDER_H then
+                        local t = math.max(0, math.min(1, (mx - SLIDER_X) / SLIDER_W))
+                        part[pm.key] = pm.min + t * (pm.max - pm.min)
+                        charEditor.paramSel = pi
+                        return
+                    end
+                    ppy = ppy + 22
+                end
+            end
+        elseif charEditor.tab == "POSES" then
+            local py = CONTENT_Y
+            for i = 1, 9 do
+                -- Save button
+                local sbx = PANEL_X + 150
+                if mx >= sbx and mx <= sbx + 70 and my >= py + 4 and my <= py + 24 then
+                    if char.parts then
+                        charEditor.poses[i] = Character.snapshot(char)
+                    end
+                    return
+                end
+                -- Load button
+                local lbx = sbx + 80
+                if mx >= lbx and mx <= lbx + 70 and my >= py + 4 and my <= py + 24 then
+                    if charEditor.poses[i] and #charEditor.poses[i] > 0 then
+                        Character.applyPose(char, charEditor.poses[i])
+                    end
+                    return
+                end
+                py = py + 32
+            end
+        elseif charEditor.tab == "ANIM" then
+            -- Pose A / B click
+            local py = CONTENT_Y
+            if mx >= PANEL_X + 100 and mx <= PANEL_X + 130 and my >= py and my <= py + 20 then
+                charEditor.animPoseA = charEditor.animPoseA % 9 + 1
+                return
+            end
+            if mx >= PANEL_X + 220 and mx <= PANEL_X + 250 and my >= py and my <= py + 20 then
+                charEditor.animPoseB = charEditor.animPoseB % 9 + 1
+                return
+            end
+            py = py + 30
+
+            -- Blend slider click
+            local bsx = PANEL_X + 80
+            local bsy = py + 4
+            if mx >= bsx and mx <= bsx + 260 and my >= bsy and my <= bsy + 8 then
+                charEditor.animBlend = math.max(0, math.min(1, (mx - bsx) / 260))
+                return
+            end
+            py = py + 30
+
+            -- Auto toggle click
+            local actx = PANEL_X + 60
+            local acty = py
+            if mx >= actx and mx <= actx + 80 and my >= acty and my <= acty + 22 then
+                charEditor.animAuto = not charEditor.animAuto
+                charEditor.animTimer = 0
+                return
+            end
+            py = py + 28
+
+            -- Speed slider click
+            local vsx = PANEL_X + 60
+            local vsy = py + 4
+            if mx >= vsx and mx <= vsx + 180 and my >= vsy and my <= vsy + 8 then
+                charEditor.animSpeed = math.max(0.1, math.min(3.0, (mx - vsx) / 180 * 3.0))
+                return
+            end
+        end
+        return
+    end
+end
         end
 
         -- Verificar click en la barra lateral de tiles
@@ -1115,6 +1331,19 @@ function love.mousemoved(mx, my)
             end
         end
         return
+    end
+end
+
+function love.wheelmoved(x, y)
+    if charEditor.active and charEditor.tab == "PARTES" and player.character then
+        local part = player.character.parts[charEditor.partSel]
+        if part then
+            local params = Character.getParamMeta(part)
+            local pm = params[charEditor.paramSel]
+            if pm then
+                part[pm.key] = math.max(pm.min, math.min(pm.max, part[pm.key] + pm.step * y))
+            end
+        end
     end
 end
 
@@ -1182,6 +1411,20 @@ function love.update(dt)
                 inWaterFade = math.max(0, inWaterFade - dt / 0.5)
             end
             wasInWater = inWater
+
+            -- Character animation (pose blend)
+            if charEditor.active and charEditor.tab == "ANIM" and player.character then
+                local poseA = charEditor.poses[charEditor.animPoseA]
+                local poseB = charEditor.poses[charEditor.animPoseB]
+                if poseA and #poseA > 0 and poseB and #poseB > 0 then
+                    if charEditor.animAuto then
+                        charEditor.animTimer = charEditor.animTimer + dt * charEditor.animSpeed
+                        charEditor.animBlend = (math.sin(charEditor.animTimer) + 1) / 2
+                    end
+                    local blended = Character.lerpPose(poseA, poseB, charEditor.animBlend)
+                    Character.applyPose(player.character, blended)
+                end
+            end
         end
     end
 
@@ -1641,6 +1884,207 @@ local function drawEditor()
     love.graphics.printf("Click izq: pintar | Der: borrar | Flechas: mover cursor | 1-8: tile | S: guardar", 0, helpY, sw, "center")
 end
 
+local function drawCharEditor()
+    if not charEditor.active or not player or not player.character then return end
+    local sw, sh = love.graphics.getDimensions()
+    local PANEL_X = 20
+    local PANEL_Y = 55
+    local PANEL_W = 400
+    local LINE_H = 24
+    local char = player.character
+
+    -- Overlay semi-transparent background
+    love.graphics.setColor(0, 0, 0, 0.85)
+    love.graphics.rectangle("fill", PANEL_X, PANEL_Y, PANEL_W, 430)
+
+    -- Title bar
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.setFont(fonts.f16)
+    love.graphics.print("F3 — Editor de Personaje", PANEL_X + 10, PANEL_Y + 8)
+
+    -- Close button
+    local closeBtn = {x = PANEL_X + PANEL_W - 28, y = PANEL_Y + 6, w = 22, h = 22}
+    love.graphics.setColor(0.6, 0.2, 0.2)
+    love.graphics.rectangle("fill", closeBtn.x, closeBtn.y, closeBtn.w, closeBtn.h)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.setFont(fonts.f14)
+    love.graphics.print("X", closeBtn.x + 6, closeBtn.y + 4)
+
+    -- Tabs
+    local TAB_Y = PANEL_Y + 32
+    local TAB_W = 120
+    local TAB_H = 28
+    for i, tn in ipairs(charEditor.tabNames) do
+        local tx = PANEL_X + 10 + (i - 1) * (TAB_W + 6)
+        if tn == charEditor.tab then
+            love.graphics.setColor(0.3, 0.6, 0.9)
+        else
+            love.graphics.setColor(0.2, 0.2, 0.3)
+        end
+        love.graphics.rectangle("fill", tx, TAB_Y, TAB_W, TAB_H)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.setFont(fonts.f12)
+        local tw = fonts.f12:getWidth(tn)
+        love.graphics.print(tn, tx + (TAB_W - tw) / 2, TAB_Y + 7)
+    end
+
+    local CONTENT_Y = TAB_Y + TAB_H + 12
+    local CONTENT_H = 340
+
+    if charEditor.tab == "PARTES" then
+        -- Left sidebar: parts list
+        local SIDEBAR_X = PANEL_X + 10
+        local SIDEBAR_W = 110
+        local py = CONTENT_Y
+        for i, part in ipairs(char.parts) do
+            local hover = false
+            local col
+            if i == charEditor.partSel then
+                col = {0.3, 0.6, 0.9}
+            else
+                col = {0.15, 0.15, 0.2}
+            end
+            love.graphics.setColor(col)
+            love.graphics.rectangle("fill", SIDEBAR_X, py, SIDEBAR_W, 22)
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.setFont(fonts.f12)
+            love.graphics.print(part.name, SIDEBAR_X + 6, py + 4)
+            py = py + 24
+        end
+
+        -- Right panel: part parameters
+        local part = char.parts[charEditor.partSel]
+        if part then
+            local params = Character.getParamMeta(part)
+            local px = SIDEBAR_X + SIDEBAR_W + 15
+            local ppy = CONTENT_Y
+            love.graphics.setFont(fonts.f12)
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.print("Parte: " .. part.name, px, ppy - 2)
+            ppy = ppy + 22
+
+            for pi, pm in ipairs(params) do
+                local val = part[pm.key]
+                if val ~= nil then
+                    local txt = pm.name .. ": " .. string.format(pm.fmt, val)
+                    love.graphics.setFont(fonts.f12)
+                    if pi == charEditor.paramSel then
+                        love.graphics.setColor(1, 1, 0)
+                    else
+                        love.graphics.setColor(0.8, 0.8, 0.8)
+                    end
+                    love.graphics.print(txt, px, ppy)
+
+                    -- Slider bar
+                    local SLIDER_X = px + 170
+                    local SLIDER_W = 100
+                    local SLIDER_H = 6
+                    local sliderY = ppy + 6
+                    love.graphics.setColor(0.3, 0.3, 0.3)
+                    love.graphics.rectangle("fill", SLIDER_X, sliderY, SLIDER_W, SLIDER_H)
+                    local t = (val - pm.min) / (pm.max - pm.min)
+                    love.graphics.setColor(0.6, 0.8, 1.0)
+                    love.graphics.rectangle("fill", SLIDER_X, sliderY, SLIDER_W * t, SLIDER_H)
+                    love.graphics.setColor(0.8, 0.8, 0.8)
+                    love.graphics.rectangle("line", SLIDER_X, sliderY, SLIDER_W, SLIDER_H)
+
+                    if charEditor.sliders then
+                        charEditor.sliders[pi] = {x = SLIDER_X, y = sliderY, w = SLIDER_W, h = SLIDER_H, paramIdx = pi, partIdx = charEditor.partSel, meta = pm}
+                    end
+                end
+                ppy = ppy + 22
+            end
+        end
+    elseif charEditor.tab == "POSES" then
+        local py = CONTENT_Y
+        for i = 1, 9 do
+            local hasPose = charEditor.poses[i] and #charEditor.poses[i] > 0
+            love.graphics.setColor(0.2, 0.2, 0.25)
+            love.graphics.rectangle("fill", PANEL_X + 10, py, 370, 28)
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.setFont(fonts.f12)
+            local label = "Pose " .. i .. (hasPose and " (guardada)" or " (vacia)")
+            love.graphics.print(label, PANEL_X + 16, py + 6)
+
+            -- Save button
+            local sbx = PANEL_X + 150
+            love.graphics.setColor(0.3, 0.5, 0.3)
+            love.graphics.rectangle("fill", sbx, py + 4, 70, 20)
+            love.graphics.setColor(1, 1, 1)
+            local tw = fonts.f12:getWidth("Guardar")
+            love.graphics.print("Guardar", sbx + (70 - tw) / 2, py + 6)
+
+            -- Load button
+            local lbx = sbx + 80
+            love.graphics.setColor(0.3, 0.3, 0.5)
+            love.graphics.rectangle("fill", lbx, py + 4, 70, 20)
+            love.graphics.setColor(1, 1, 1)
+            tw = fonts.f12:getWidth("Cargar")
+            love.graphics.print("Cargar", lbx + (70 - tw) / 2, py + 6)
+
+            py = py + 32
+        end
+    elseif charEditor.tab == "ANIM" then
+        local py = CONTENT_Y
+        love.graphics.setFont(fonts.f12)
+        love.graphics.setColor(0.8, 0.8, 0.8)
+        love.graphics.print("Pose A:", PANEL_X + 10, py)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.print(tostring(charEditor.animPoseA), PANEL_X + 110, py)
+        love.graphics.print("Pose B:", PANEL_X + 180, py)
+        love.graphics.print(tostring(charEditor.animPoseB), PANEL_X + 230, py)
+        py = py + 30
+
+        -- Blend slider
+        love.graphics.setColor(0.8, 0.8, 0.8)
+        love.graphics.print("Mezcla:", PANEL_X + 16, py)
+        local bsx = PANEL_X + 80
+        local bsy = py + 4
+        love.graphics.setColor(0.3, 0.3, 0.3)
+        love.graphics.rectangle("fill", bsx, bsy, 260, 8)
+        love.graphics.setColor(0.6, 0.8, 1.0)
+        love.graphics.rectangle("fill", bsx, bsy, 260 * charEditor.animBlend, 8)
+        love.graphics.setColor(0.8, 0.8, 0.8)
+        love.graphics.rectangle("line", bsx, bsy, 260, 8)
+        love.graphics.setFont(fonts.f12)
+        love.graphics.print(string.format("%.2f", charEditor.animBlend), bsx + 205, bsy + 10)
+        py = py + 30
+
+        -- Auto toggle
+        love.graphics.setFont(fonts.f12)
+        love.graphics.setColor(0.8, 0.8, 0.8)
+        love.graphics.print("Auto:", PANEL_X + 16, py)
+        local actx = PANEL_X + 60
+        local acty = py
+        local actCol = charEditor.animAuto and {0.3, 0.6, 0.3} or {0.3, 0.3, 0.3}
+        love.graphics.setColor(actCol)
+        love.graphics.rectangle("fill", actx, acty, 80, 22)
+        love.graphics.setColor(1, 1, 1)
+        local atxt = charEditor.animAuto and "ACTIVO" or "INACTIVO"
+        love.graphics.print(atxt, actx + 10, acty + 5)
+        py = py + 28
+
+        -- Speed slider
+        love.graphics.setColor(0.8, 0.8, 0.8)
+        love.graphics.print("Vel:", PANEL_X + 16, py)
+        local vsx = PANEL_X + 60
+        local vsy = py + 4
+        love.graphics.setColor(0.3, 0.3, 0.3)
+        love.graphics.rectangle("fill", vsx, vsy, 180, 8)
+        local vt = charEditor.animSpeed / 3.0
+        love.graphics.setColor(0.6, 0.8, 1.0)
+        love.graphics.rectangle("fill", vsx, vsy, 180 * vt, 8)
+        love.graphics.setColor(0.8, 0.8, 0.8)
+        love.graphics.rectangle("line", vsx, vsy, 180, 8)
+        love.graphics.print(string.format("%.1f", charEditor.animSpeed), vsx + 185, vsy + 10)
+    end
+
+    -- Save hint at bottom
+    love.graphics.setColor(0.5, 0.5, 0.5)
+    love.graphics.setFont(fonts.f12)
+    love.graphics.print("S: guardar  |  ESC: cerrar  |  Tab: pestaña", PANEL_X + 10, PANEL_Y + 400)
+end
+
 function love.draw()
     love.graphics.clear(0,0,0)
     local sw, sh = love.graphics.getDimensions()
@@ -1905,6 +2349,11 @@ function love.draw()
     -- Editor overlay
     if editor.active then
         drawEditor()
+    end
+
+    -- Character editor overlay
+    if charEditor.active then
+        drawCharEditor()
     end
 
     -- Game over / Win states

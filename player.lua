@@ -1,5 +1,7 @@
 -- player.lua – Player character implementation
 
+local Character = require "character"
+
 local Player = {}
 Player.__index = Player
 
@@ -14,6 +16,10 @@ function Player:new()
     self.stretchY = 1
     self.lastDirX = 1
     self.lastDirY = 0
+    self.lastFlipX = 1
+    self.attackTimer = 0
+    self.attackDuration = 0.25
+    self.character = Character.create()
     return self
 end
 
@@ -48,6 +54,12 @@ function Player:setPos(room, maze)
     end
 end
 
+function Player:startAttack()
+    if self.attackTimer <= 0 then
+        self.attackTimer = self.attackDuration
+    end
+end
+
 function Player:update(input, maze, dt)
     -- Normalizar input diagonal para evitar velocidad √2
     local len = math.sqrt(input.x^2 + input.y^2)
@@ -60,6 +72,9 @@ function Player:update(input, maze, dt)
     if math.abs(input.x) > 0.1 or math.abs(input.y) > 0.1 then
         self.lastDirX = input.x
         self.lastDirY = input.y
+    end
+    if math.abs(input.x) > 0.1 then
+        self.lastFlipX = input.x
     end
     local spd = math.sqrt((input.x * self.speed)^2 + (input.y * self.speed)^2)
     if moved and spd > 10 then
@@ -80,17 +95,56 @@ function Player:update(input, maze, dt)
     local ls = 8 * dt
     self.stretchX = self.stretchX + (tx - self.stretchX) * ls
     self.stretchY = self.stretchY + (ty - self.stretchY) * ls
+    if self.attackTimer > 0 then
+        self.attackTimer = math.max(0, self.attackTimer - dt)
+    end
 end
 
-function Player:draw(camera)
+function Player:draw(camera, maze)
     local sx = self.x - camera.x
     local sy = self.y - camera.y
     local bobOffset = math.sin(self.bob) * 3
-    love.graphics.setColor(0,1,1) -- cyan
-    love.graphics.circle("fill", sx, sy + bobOffset, self.r)
-    love.graphics.setColor(1,1,1) -- white
-    love.graphics.rectangle("fill", sx-4.5, sy-3.5, 3, 3)
-    love.graphics.rectangle("fill", sx+2.5, sy-3.5, 3, 3)
+
+    local sinkOffset = 0
+    if maze then
+        local tx = math.floor(self.x / maze.tile)
+        local ty = math.floor(self.y / maze.tile)
+        if maze.grid[ty] and maze.grid[ty][tx] == 8 then
+            sinkOffset = 3
+        end
+    end
+
+    self.character:draw(sx, sy, bobOffset, sinkOffset)
+end
+
+function Player:drawHand(maze, camera, radius, sheet, quads)
+    local tile = maze.tile
+    local dist = radius * tile
+    local len = math.sqrt(self.lastDirX^2 + self.lastDirY^2)
+    if len < 0.01 then return end
+    local dx = self.lastDirX / len
+    local dy = self.lastDirY / len
+    local facingAngle = math.atan2(dy, dx)
+
+    local drawAngle = 0
+    local sx = self.lastFlipX < 0 and -1 or 1
+    local hx, hy
+
+    if self.attackTimer > 0 then
+        local progress = 1 - self.attackTimer / self.attackDuration
+        local swingDir = self.lastFlipX < 0 and -1 or 1
+        local swingAngle = math.sin(progress * math.pi) * math.rad(90) * swingDir
+        local a = facingAngle + swingAngle
+        hx = self.x + math.cos(a) * dist - camera.x
+        hy = self.y + math.sin(a) * dist - camera.y
+        drawAngle = swingAngle
+    else
+        hx = self.x + dx * dist - camera.x
+        hy = self.y + dy * dist - camera.y
+    end
+
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.draw(sheet, quads[1][1], hx, hy, drawAngle, sx, 1, 16, 16)
 end
 
 return Player
