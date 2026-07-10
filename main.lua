@@ -843,7 +843,12 @@ function love.draw()
     end
 
     player:draw(camera, maze)
-    player:drawHand(maze, camera, UIDebug.handRadius, axeSheet, axeQuads)
+    local aimAngle
+    if not CharEditor.active then
+        local mx, my = love.mouse.getPosition()
+        aimAngle = math.atan2(my + camera.y - player.y, mx + camera.x - player.x)
+    end
+    player:drawHand(maze, camera, UIDebug.handRadius, axeSheet, axeQuads, aimAngle)
     criker:draw(camera)
     love.graphics.setCanvas()
 

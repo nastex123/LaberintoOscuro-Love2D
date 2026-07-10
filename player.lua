@@ -117,17 +117,22 @@ function Player:draw(camera, maze)
     self.character:draw(sx, sy, bobOffset, sinkOffset)
 end
 
-function Player:drawHand(maze, camera, radius, sheet, quads)
+function Player:drawHand(maze, camera, radius, sheet, quads, aimAngle)
     local tile = maze.tile
     local dist = radius * tile
     local len = math.sqrt(self.lastDirX^2 + self.lastDirY^2)
     if len < 0.01 then return end
     local dx = self.lastDirX / len
     local dy = self.lastDirY / len
-    local facingAngle = math.atan2(dy, dx)
+    local facingAngle = aimAngle or math.atan2(dy, dx)
 
     local drawAngle = 0
-    local sx = self.lastFlipX < 0 and -1 or 1
+    local sx
+    if aimAngle then
+        sx = math.cos(aimAngle) < 0 and -1 or 1
+    else
+        sx = self.lastFlipX < 0 and -1 or 1
+    end
     local hx, hy
 
     if self.attackTimer > 0 then
@@ -139,8 +144,8 @@ function Player:drawHand(maze, camera, radius, sheet, quads)
         hy = self.y + math.sin(a) * dist - camera.y
         drawAngle = swingAngle
     else
-        hx = self.x + dx * dist - camera.x
-        hy = self.y + dy * dist - camera.y
+        hx = self.x + math.cos(facingAngle) * dist - camera.x
+        hy = self.y + math.sin(facingAngle) * dist - camera.y
     end
 
     love.graphics.setColor(1, 1, 1)
