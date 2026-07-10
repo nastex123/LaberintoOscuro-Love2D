@@ -103,7 +103,7 @@ end
 function Player:draw(camera, maze)
     local sx = self.x - camera.x
     local sy = self.y - camera.y
-    local bobOffset = math.sin(self.bob) * 3
+    local bobOffset = 0
 
     local sinkOffset = 0
     if maze then
