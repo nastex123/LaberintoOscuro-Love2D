@@ -21,7 +21,7 @@ local charEditorModule = {
     animTimer = 0,
     editAnimName = false,
     animNameBuf = "",
-    charConfigPath = "char_config.json",
+    charConfigPath = nil, -- set lazily in persist/loadConfig
     sliders = {},
     dragging = false,
 }
@@ -31,6 +31,9 @@ function charEditorModule:toggle()
 end
 
 local function persist(player)
+    if not charEditorModule.charConfigPath then
+        charEditorModule.charConfigPath = love.filesystem.getSource() .. "/char_config.json"
+    end
     local data = {
         parts = {},
         animations = charEditorModule.animations,
@@ -40,13 +43,33 @@ local function persist(player)
         for k, v in pairs(part) do pd[k] = v end
         table.insert(data.parts, pd)
     end
-    love.filesystem.write(charEditorModule.charConfigPath, json.encode(data))
+    local f = io.open(charEditorModule.charConfigPath, "w")
+    if f then f:write(json.encode(data)); f:close() end
 end
 
 function charEditorModule:saveConfig(player) persist(player) end
 
+local function updateFrameFromParts(char, partData, frames, frameIdx)
+    if not frames or frameIdx < 1 or frameIdx > #frames then return end
+    local f = frames[frameIdx]
+    for i, p in ipairs(char.parts) do
+        if f[i] then
+            for k, v in pairs(p) do
+                if k ~= "name" and k ~= "type" then
+                    f[i][k] = v
+                end
+            end
+        end
+    end
+end
+
 function charEditorModule:loadConfig(player)
-    local txt = love.filesystem.read(self.charConfigPath)
+    if not self.charConfigPath then
+        self.charConfigPath = love.filesystem.getSource() .. "/char_config.json"
+    end
+    local f = io.open(self.charConfigPath, "r")
+    local txt = f and f:read("*a") or ""
+    if f then f:close() end
     if txt and txt ~= "" then
         local ok, parsed = pcall(json.decode, txt)
         if ok then
@@ -523,20 +546,6 @@ function charEditorModule:mousepressed(mx, my, button, player)
                 end
                 persist(player)
                 return
-            end
-        end
-    end
-end
-
-local function updateFrameFromParts(char, partData, frames, frameIdx)
-    if not frames or frameIdx < 1 or frameIdx > #frames then return end
-    local f = frames[frameIdx]
-    for i, p in ipairs(char.parts) do
-        if f[i] then
-            for k, v in pairs(p) do
-                if k ~= "name" and k ~= "type" then
-                    f[i][k] = v
-                end
             end
         end
     end
