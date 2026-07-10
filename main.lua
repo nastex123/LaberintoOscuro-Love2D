@@ -646,10 +646,14 @@ function love.update(dt)
         end
         if arm then
             local mx, my = love.mouse.getPosition()
-            local angle = math.deg(math.atan2(
-                my + camera.y - (player.y + arm.offsetY),
-                mx + camera.x - (player.x + arm.offsetX)))
-            arm.angleDeg = angle
+            local angleRad = math.atan2(
+                my + camera.y - player.y,
+                mx + camera.x - player.x)
+            local radius = math.sqrt(arm.offsetX^2 + arm.offsetY^2)
+            if radius < 0.5 then radius = 6 end
+            arm.offsetX = math.cos(angleRad) * radius
+            arm.offsetY = math.sin(angleRad) * radius
+            arm.angleDeg = math.deg(angleRad)
         end
     end
 end
