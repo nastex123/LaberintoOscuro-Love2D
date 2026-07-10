@@ -431,7 +431,7 @@ function love.keypressed(key)
         if UIDebug.ui.active then UIDebug.ui.active = false end
         CharEditor.active = not CharEditor.active
         if CharEditor.active and player.character then
-            CharEditor.poses = CharEditor.poses or {}
+
         end
         return
     end
@@ -462,7 +462,7 @@ function love.mousemoved(mx, my)
         return
     end
     if CharEditor.active and CharEditor.dragging then
-        CharEditor:mousemoved(mx, my)
+        CharEditor:mousemoved(mx, my, player)
     end
 end
 
@@ -472,13 +472,15 @@ end
 
 function love.mousereleased(mx, my, button)
     if button == 1 then
-        CharEditor:mousereleased(mx, my, button)
+        CharEditor:mousereleased(mx, my, button, player)
     end
 end
 
 function love.textinput(text)
     if EditorF2.active then
         EditorF2:textinput(text)
+    elseif CharEditor.active then
+        CharEditor:textinput(text)
     end
 end
 

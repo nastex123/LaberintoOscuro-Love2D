@@ -355,7 +355,7 @@ function editorF2:mousemoved(mx, my, brushChars)
     end
 end
 
-function editorF2:draw(tileOrder, tileSheets, tileQuads, Tiles, fonts)
+function editorF2:draw(tileOrder, tileSheets, tileQuads, Tiles)
     local sw, sh = love.graphics.getDimensions()
     local EDITOR_TILE = 32
     local gridW = self.width * EDITOR_TILE
