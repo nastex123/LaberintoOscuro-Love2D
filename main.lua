@@ -637,6 +637,21 @@ function love.update(dt)
             end
         end
     end
+
+    -- Right arm follows mouse cursor (gameplay only, not in editors)
+    if state == "play" and player and player.character and not CharEditor.active then
+        local arm
+        for _, p in ipairs(player.character.parts) do
+            if p.name == "Brazo Der" then arm = p; break end
+        end
+        if arm then
+            local mx, my = love.mouse.getPosition()
+            local angle = math.deg(math.atan2(
+                my + camera.y - (player.y + arm.offsetY),
+                mx + camera.x - (player.x + arm.offsetX)))
+            arm.angleDeg = angle
+        end
+    end
 end
 
 local function drawUI()
